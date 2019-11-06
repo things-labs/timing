@@ -59,8 +59,10 @@ func (sf *Timing) AddCronJob(job CronJob) EntryID {
 func (sf *Timing) run() {
 	now := time.Now()
 	for _, e := range sf.entries {
-		timeout, _ := e.job.Deploy()
-		e.next = now.Add(timeout)
+		if timeout, cnt := e.job.Deploy(); cnt.Load() >= 0 {
+			e.next = now.Add(timeout.Load())
+			sf.entries = append(sf.entries, e)
+		}
 	}
 
 	for {
@@ -90,13 +92,14 @@ func (sf *Timing) run() {
 					continue
 				}
 
-				timeout, cnt := e.job.Deploy()
+				timeout, aCnt := e.job.Deploy()
+				cnt := aCnt.Load()
 				if cnt < 0 || (cnt > 0 && e.count >= cnt) {
 					delIDs = append(delIDs, e.id)
 					continue
 				}
 
-				e.next = now.Add(timeout)
+				e.next = now.Add(timeout.Load())
 			}
 
 			for _, id := range delIDs {
@@ -105,8 +108,8 @@ func (sf *Timing) run() {
 
 		case newEntry := <-sf.addEntry:
 			tm.Stop()
-			if timeout, cnt := newEntry.job.Deploy(); cnt >= 0 {
-				newEntry.next = time.Now().Add(timeout)
+			if timeout, cnt := newEntry.job.Deploy(); cnt.Load() >= 0 {
+				newEntry.next = time.Now().Add(timeout.Load())
 				sf.entries = append(sf.entries, newEntry)
 			}
 

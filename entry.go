@@ -11,7 +11,7 @@ type Entry struct {
 
 	next time.Time // next 下一次运行时间  0: 表示未运行,或未启动
 
-	count int // 任务执行的次数
+	count int32 // 任务执行的次数
 
 	job CronJob
 }
