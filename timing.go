@@ -91,7 +91,7 @@ func (sf *Timing) run() {
 				}
 
 				timeout, cnt := e.job.Deploy()
-				if cnt < 0 || (cnt > 0 && e.count > cnt) {
+				if cnt < 0 || (cnt > 0 && e.count >= cnt) {
 					delIDs = append(delIDs, e.id)
 					continue
 				}
