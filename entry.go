@@ -2,14 +2,16 @@ package timing
 
 import "time"
 
+// EntryID 条日ID
 type EntryID int
 
+// Entry 条目
 type Entry struct {
-	ID EntryID // ID 用于标识这个条目
+	id EntryID // id 用于标识这个条目
 
-	Next time.Time // Next 下一次运行时间  0: 表示未运行,或未启动
+	next time.Time // next 下一次运行时间  0: 表示未运行,或未启动
 
-	count uint
+	count int // 任务执行的次数
 
 	job CronJob
 }
@@ -24,19 +26,11 @@ func (sf entryByTime) Swap(i, j int) { sf[i], sf[j] = sf[j], sf[i] }
 
 // Less implement sort.Interface
 func (sf entryByTime) Less(i, j int) bool {
-	if sf[i].Next.IsZero() {
+	if sf[i].next.IsZero() {
 		return false
 	}
-	if sf[j].Next.IsZero() {
+	if sf[j].next.IsZero() {
 		return true
 	}
-	return sf[i].Next.Before(sf[j].Next)
-}
-
-// Peak 查看最近要到达超时的元素,如果没有,返回nil
-func (sf entryByTime) peak() *Entry {
-	if len(sf) == 0 || sf[0].Next.IsZero() {
-		return nil
-	}
-	return sf[0]
+	return sf[i].next.Before(sf[j].next)
 }
