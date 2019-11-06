@@ -2,10 +2,16 @@ package timing
 
 import "time"
 
+type EntryID int
+
 type Entry struct {
-	ID int // ID 用于标识这个条目
+	ID EntryID // ID 用于标识这个条目
 
 	Next time.Time // Next 下一次运行时间  0: 表示未运行,或未启动
+
+	count uint
+
+	job CronJob
 }
 
 type entryByTime []*Entry
