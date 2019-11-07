@@ -1,10 +1,9 @@
-// Package timing 实现定时调度功能,采用最小堆实现,Job任务将在回调中执行,不宜执行任务繁重的任务.
+// Package timing 实现定时调度功能,采用最小堆实现,不宜执行任务繁重的任务.
 package timing
 
 import (
 	"container/heap"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -19,16 +18,11 @@ type Timing struct {
 	entries  entriesByTime
 	addEntry chan *Entry
 	delEntry chan *Entry
-	modify   chan modInterval
+	needFix  chan struct{}
 	stop     chan struct{}
 
 	running bool
 	mu      sync.Mutex
-}
-
-type modInterval struct {
-	entry    *Entry
-	interval time.Duration
 }
 
 // New new a timing
@@ -36,8 +30,8 @@ func New() *Timing {
 	return &Timing{
 		addEntry: make(chan *Entry, 32),
 		delEntry: make(chan *Entry, 32),
-		modify:   make(chan modInterval, 32),
 		stop:     make(chan struct{}),
+		needFix:  make(chan struct{}, 1),
 	}
 }
 
@@ -52,13 +46,20 @@ func (sf *Timing) Start() {
 	go sf.run()
 }
 
+// HasRunning 是否已运行
+func (sf *Timing) HasRunning() bool {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.running
+}
+
 // AddJob 添加任务
 func (sf *Timing) AddJob(job Job, interval time.Duration, num int32) *Entry {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	entry := &Entry{
-		number:   num,
-		interval: interval,
+		number:   NewInt32(num),
+		interval: NewDuration(interval),
 		job:      job,
 	}
 	if sf.running {
@@ -79,6 +80,21 @@ func (sf *Timing) AddOneShotJob(job Job, interval time.Duration) *Entry {
 	return sf.AddJob(job, interval, oneShot)
 }
 
+// AddJobFunc 添加任务函数
+func (sf *Timing) AddJobFunc(f JobFunc, interval time.Duration, num int32) *Entry {
+	return sf.AddJob(f, interval, num)
+}
+
+// AddPersistJobFunc 添加周期性函数
+func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
+	return sf.AddJob(f, interval, persist)
+}
+
+// AddOneShotJobFunc 添加一次性任务函数
+func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Entry {
+	return sf.AddJob(f, interval, oneShot)
+}
+
 // Delete 删除指定条目
 func (sf *Timing) Delete(e *Entry) {
 	if e == nil {
@@ -87,8 +103,11 @@ func (sf *Timing) Delete(e *Entry) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
-		atomic.StoreInt32(&e.number, del) // 标记删除,当正在执行时,可以即时删除
-		sf.delEntry <- e
+		e.number.Store(del) // 标记删除,当正在执行时,可以即时删除,防止正在执行却
+		select {
+		case sf.delEntry <- e:
+		default: // may not block,because it may be call by job
+		}
 	} else {
 		sf.entries.remove(e)
 	}
@@ -99,15 +118,10 @@ func (sf *Timing) Modify(e *Entry, interval time.Duration) {
 	if e == nil {
 		return
 	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
-		sf.modify <- modInterval{
-			entry:    e,
-			interval: interval,
-		}
-	} else {
-		e.interval = interval
+	e.interval.Store(interval)
+	select {
+	case sf.needFix <- struct{}{}:
+	default:
 	}
 }
 
@@ -122,22 +136,16 @@ func (sf *Timing) Close() error {
 	return nil
 }
 
-// HasRunning 是否已运行
-func (sf *Timing) HasRunning() bool {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.running
-}
-
 func (sf *Timing) run() {
 	now := time.Now()
 	for _, e := range sf.entries {
-		if e.number >= 0 {
-			e.next = now.Add(e.interval)
+		if e.number.Load() >= 0 {
+			e.next = now.Add(e.interval.Load())
 		}
 	}
 
 	for {
+		// 排个序
 		heap.Init(&sf.entries)
 
 		var tm *time.Timer
@@ -151,8 +159,7 @@ func (sf *Timing) run() {
 		case now := <-tm.C:
 			for len(sf.entries) > 0 {
 				e := sf.entries[0]
-				cnt := atomic.LoadInt32(&e.number)
-				if cnt < 0 { // 是标记过删除,时间到,但未及时删除的,删除之
+				if e.number.Load() < 0 { // 是标记过删除,时间到,但未及时删除的,删除之
 					heap.Pop(&sf.entries)
 					continue
 				}
@@ -160,33 +167,32 @@ func (sf *Timing) run() {
 				if e.next.After(now) || e.next.IsZero() {
 					break
 				}
-				e.count++
-				heap.Pop(&sf.entries)
 
-				if !e.job.Run() {
+				sf.entries.Swap(0, sf.entries.Len()-1)
+				sf.entries.Pop()
+
+				e.job.Run()
+
+				e.count++
+				cnt := e.number.Load()
+				if cnt < 0 || (cnt > 0 && e.count >= cnt) {
+					heap.Init(&sf.entries)
 					continue
 				}
-				if cnt > 0 && e.count >= cnt {
-					continue
-				}
-				e.next = now.Add(e.interval)
+				e.next = now.Add(e.interval.Load())
 				heap.Push(&sf.entries, e)
 			}
 
 		case newEntry := <-sf.addEntry:
 			tm.Stop()
-			if newEntry.number >= 0 {
-				newEntry.next = time.Now().Add(newEntry.interval)
+			if newEntry.number.Load() >= 0 {
+				newEntry.next = time.Now().Add(newEntry.interval.Load())
 				sf.entries.Push(newEntry)
 			}
 
 		case e := <-sf.delEntry:
 			tm.Stop()
 			sf.entries.remove(e)
-
-		case md := <-sf.modify:
-			tm.Stop()
-			md.entry.interval = md.interval
 
 		case <-sf.stop:
 			tm.Stop()
