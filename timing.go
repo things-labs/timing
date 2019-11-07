@@ -1,7 +1,7 @@
 package timing
 
 import (
-	"sort"
+	"container/heap"
 	"sync"
 	"time"
 )
@@ -10,8 +10,7 @@ import (
 type Timing struct {
 	entries  []*Entry
 	addEntry chan *Entry
-	delEntry chan EntryID
-	nextID   EntryID
+	delEntry chan *Entry
 
 	running bool
 	mu      sync.Mutex
@@ -23,7 +22,7 @@ func New() *Timing {
 	return &Timing{
 		entries:  nil,
 		addEntry: make(chan *Entry, 16),
-		delEntry: make(chan EntryID, 16),
+		delEntry: make(chan *Entry, 16),
 		stop:     make(chan struct{}),
 	}
 }
@@ -40,12 +39,10 @@ func (sf *Timing) Start() {
 }
 
 // AddCronJob 添加定时任务
-func (sf *Timing) AddCronJob(job CronJob) EntryID {
+func (sf *Timing) AddCronJob(job CronJob) *Entry {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	sf.nextID++
 	entry := &Entry{
-		id:  sf.nextID,
 		job: job,
 	}
 	if !sf.running {
@@ -53,7 +50,7 @@ func (sf *Timing) AddCronJob(job CronJob) EntryID {
 	} else {
 		sf.addEntry <- entry
 	}
-	return sf.nextID
+	return entry
 }
 
 func (sf *Timing) run() {
@@ -64,11 +61,8 @@ func (sf *Timing) run() {
 			sf.entries = append(sf.entries, e)
 		}
 	}
-
+	heap.Init((*entryByTime)(&sf.entries))
 	for {
-		// 排个序
-		sort.Sort(entryByTime(sf.entries))
-
 		var tm *time.Timer
 		now := time.Now()
 		// 获得最近超时的时间
@@ -80,42 +74,36 @@ func (sf *Timing) run() {
 		}
 		select {
 		case now = <-tm.C:
-			var delIDs []EntryID
-			for _, e := range sf.entries {
+			for len(sf.entries) > 0 {
+				e := sf.entries[0]
 				if e.next.After(now) || e.next.IsZero() {
 					break
 				}
-
+				heap.Pop((*entryByTime)(&sf.entries))
 				e.count++
 				if !e.job.Run() {
-					delIDs = append(delIDs, e.id)
 					continue
 				}
 
 				timeout, aCnt := e.job.Deploy()
 				cnt := aCnt.Load()
 				if cnt < 0 || (cnt > 0 && e.count >= cnt) {
-					delIDs = append(delIDs, e.id)
 					continue
 				}
-
 				e.next = now.Add(timeout.Load())
-			}
-
-			for _, id := range delIDs {
-				sf.removeEntry(id)
+				heap.Push((*entryByTime)(&sf.entries), e)
 			}
 
 		case newEntry := <-sf.addEntry:
 			tm.Stop()
 			if timeout, cnt := newEntry.job.Deploy(); cnt.Load() >= 0 {
 				newEntry.next = time.Now().Add(timeout.Load())
-				sf.entries = append(sf.entries, newEntry)
+				heap.Push((*entryByTime)(&sf.entries), newEntry)
 			}
 
-		case id := <-sf.delEntry:
+		case e := <-sf.delEntry:
 			tm.Stop()
-			sf.Remove(id)
+			sf.Remove(e)
 		case <-sf.stop:
 			tm.Stop()
 			return
@@ -124,25 +112,23 @@ func (sf *Timing) run() {
 }
 
 // Remove 删除指定id的条目
-func (sf *Timing) Remove(id EntryID) {
+func (sf *Timing) Remove(e *Entry) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
-		sf.delEntry <- id
+		sf.delEntry <- e
 	} else {
-		sf.removeEntry(id)
+		sf.removeEntry(e)
 	}
 }
 
-func (sf *Timing) removeEntry(id EntryID) {
-	entries := sf.entries
+func (sf *Timing) removeEntry(entry *Entry) {
 	for i, e := range sf.entries {
-		if e.id == id {
-			entries = append(sf.entries[:i], sf.entries[i+1:]...)
-			break
+		if e == entry {
+			heap.Fix((*entryByTime)(&sf.entries), i)
+			return
 		}
 	}
-	sf.entries = entries
 }
 
 // Close close

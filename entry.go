@@ -2,13 +2,8 @@ package timing
 
 import "time"
 
-// EntryID 条日ID
-type EntryID int
-
 // Entry 条目
 type Entry struct {
-	id EntryID // id 用于标识这个条目
-
 	next time.Time // next 下一次运行时间  0: 表示未运行,或未启动
 
 	count int32 // 任务执行的次数
@@ -33,4 +28,18 @@ func (sf entryByTime) Less(i, j int) bool {
 		return true
 	}
 	return sf[i].next.Before(sf[j].next)
+}
+
+// Push implement heap.Interface
+func (sf *entryByTime) Push(x interface{}) {
+	*sf = append(*sf, x.(*Entry))
+}
+
+// Pop implement heap.Interface
+func (sf *entryByTime) Pop() interface{} {
+	old := *sf
+	n := len(old)
+	x := old[n-1]
+	*sf = old[0 : n-1]
+	return x
 }

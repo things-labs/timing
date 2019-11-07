@@ -8,25 +8,27 @@ import (
 )
 
 func main() {
+
 	tim := timing.New()
 	tim.Start()
-	tim.AddCronJob(&myjob{time.Second * 10})
-	tim.AddCronJob(&myjob{time.Second * 15})
-	tim.AddCronJob(&myjob{time.Second * 5})
+	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 10)})
+	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 15)})
+	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 5)})
 	for {
 		time.Sleep(time.Minute * 10)
 	}
+
 }
 
 type myjob struct {
-	timeout time.Duration
+	timeout *timing.Duration
 }
 
-func (sf myjob) Deploy() (time.Duration, int) {
-	return sf.timeout, 0
+func (sf myjob) Deploy() (*timing.Duration, *timing.Int32) {
+	return sf.timeout, timing.NewInt32(0)
 }
 
 func (sf myjob) Run() bool {
-	log.Println(sf.timeout)
+	log.Println(sf.timeout.Load())
 	return true
 }
