@@ -51,7 +51,7 @@ func (sf *Timing) Start() {
 	go sf.run()
 }
 
-// AddJob 添加定时任务
+// AddJob 添加任务
 func (sf *Timing) AddJob(job Job, interval time.Duration, num int32) *Entry {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -68,15 +68,17 @@ func (sf *Timing) AddJob(job Job, interval time.Duration, num int32) *Entry {
 	return entry
 }
 
+// AddPersistJob 添加周期性任务
 func (sf *Timing) AddPersistJob(job Job, interval time.Duration) *Entry {
 	return sf.AddJob(job, interval, persist)
 }
 
+// AddOneShotJob 添加一次性任务
 func (sf *Timing) AddOneShotJob(job Job, interval time.Duration) *Entry {
 	return sf.AddJob(job, interval, oneShot)
 }
 
-// Delete 删除指定id的条目
+// Delete 删除指定条目
 func (sf *Timing) Delete(e *Entry) {
 	if e == nil {
 		return
@@ -91,7 +93,7 @@ func (sf *Timing) Delete(e *Entry) {
 	}
 }
 
-//
+// Modify 修改条目的周期时间
 func (sf *Timing) Modify(e *Entry, interval time.Duration) {
 	if e == nil {
 		return
