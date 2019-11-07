@@ -1,3 +1,4 @@
+// Package timing 实现定时调度功能,采用最小堆实现,Job任务将在回调中执行,不宜执行任务繁重的任务.
 package timing
 
 import (
@@ -121,6 +122,13 @@ func (sf *Timing) Close() error {
 	return nil
 }
 
+// HasRunning 是否已运行
+func (sf *Timing) HasRunning() bool {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return sf.running
+}
+
 func (sf *Timing) run() {
 	now := time.Now()
 	for _, e := range sf.entries {
@@ -177,6 +185,7 @@ func (sf *Timing) run() {
 			sf.entries.remove(e)
 
 		case md := <-sf.modify:
+			tm.Stop()
 			md.entry.interval = md.interval
 
 		case <-sf.stop:
