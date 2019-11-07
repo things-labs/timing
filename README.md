@@ -6,5 +6,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/thinkgos/timing)](https://goreportcard.com/report/github.com/thinkgos/timing)
 [![Licence](https://img.shields.io/github/license/thinkgos/timing)](https://raw.githubusercontent.com/thinkgos/timing/master/LICENSE)
 
- 实现定时时间调度,任务分发,消息处理
+ - 实现简单时间调度,任务处理
+ - 任务主要在回调中处理,任务频繁却又不耗时. 
  
