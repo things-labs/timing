@@ -2,48 +2,66 @@
 package timing
 
 import (
-	"container/heap"
 	"sync"
 	"time"
 )
 
+// num 定义
 const (
-	oneShot = 1
-	persist = 0
-	del     = -1
+	OneShot = 1
+	Persist = 0
 )
+
+const (
+	// DefaultInterval 默认间隔
+	DefaultInterval = time.Second
+	// DefaultTick 默认时基
+	DefaultTick = time.Millisecond * 100
+)
+
+// Entry 条目
+type Entry struct {
+	// next 下一次运行时间  0: 表示未运行,或未启动
+	next time.Time
+	// 任务已经执行的次数
+	count uint32
+	//任务需要执行的次数
+	number uint32
+	// 时间间隔
+	interval time.Duration
+	// 任务
+	job Job
+}
 
 // Timing 定时调度
 type Timing struct {
-	entries  entriesByTime
-	addEntry chan *Entry
-	delEntry chan *Entry
-	needFix  chan struct{}
+	entries  map[*Entry]struct{}
+	mu       sync.Mutex
+	tick     time.Duration
+	interval time.Duration
 	stop     chan struct{}
-
-	running bool
-	mu      sync.Mutex
+	running  bool
 }
 
 // New new a timing
 func New() *Timing {
 	return &Timing{
-		addEntry: make(chan *Entry, 32),
-		delEntry: make(chan *Entry, 32),
-		stop:     make(chan struct{}),
-		needFix:  make(chan struct{}, 1),
+		entries:  make(map[*Entry]struct{}),
+		tick:     DefaultTick,
+		interval: DefaultInterval,
 	}
 }
 
 // Start 启动
-func (sf *Timing) Start() {
+func (sf *Timing) Run() *Timing {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
-		return
+		return sf
 	}
 	sf.running = true
 	go sf.run()
+	return sf
 }
 
 // HasRunning 是否已运行
@@ -54,75 +72,79 @@ func (sf *Timing) HasRunning() bool {
 }
 
 // AddJob 添加任务
-func (sf *Timing) AddJob(job Job, interval time.Duration, num int32) *Entry {
+func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry {
+	val := sf.interval
+	if len(interval) > 0 {
+		val = interval[0]
+	}
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	entry := &Entry{
-		number:   NewInt32(num),
-		interval: NewDuration(interval),
+		next:     time.Now().Add(val),
+		number:   num,
+		interval: val,
 		job:      job,
 	}
-	if sf.running {
-		sf.addEntry <- entry
-	} else {
-		sf.entries.Push(entry)
-	}
+	sf.entries[entry] = struct{}{}
 	return entry
 }
 
 // AddPersistJob 添加周期性任务
-func (sf *Timing) AddPersistJob(job Job, interval time.Duration) *Entry {
-	return sf.AddJob(job, interval, persist)
+func (sf *Timing) AddPersistJob(job Job, interval ...time.Duration) *Entry {
+	return sf.AddJob(job, Persist, interval...)
 }
 
 // AddOneShotJob 添加一次性任务
-func (sf *Timing) AddOneShotJob(job Job, interval time.Duration) *Entry {
-	return sf.AddJob(job, interval, oneShot)
+func (sf *Timing) AddOneShotJob(job Job, interval ...time.Duration) *Entry {
+	return sf.AddJob(job, OneShot, interval...)
 }
 
 // AddJobFunc 添加任务函数
-func (sf *Timing) AddJobFunc(f JobFunc, interval time.Duration, num int32) *Entry {
-	return sf.AddJob(f, interval, num)
+func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, num, interval...)
 }
 
 // AddPersistJobFunc 添加周期性函数
-func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return sf.AddJob(f, interval, persist)
+func (sf *Timing) AddPersistJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, Persist, interval...)
 }
 
 // AddOneShotJobFunc 添加一次性任务函数
-func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return sf.AddJob(f, interval, oneShot)
+func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, OneShot, interval...)
 }
 
 // Delete 删除指定条目
 func (sf *Timing) Delete(e *Entry) {
+	sf.mu.Lock()
+	delete(sf.entries, e)
+	sf.mu.Unlock()
+}
+
+func (sf *Timing) Restart(e *Entry) *Timing {
 	if e == nil {
-		return
+		return sf
 	}
 	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
-		e.number.Store(del) // 标记删除,当正在执行时,可以即时删除,防止正在执行却
-		select {
-		case sf.delEntry <- e:
-		default: // may not block,because it may be call by job
-		}
-	} else {
-		sf.entries.remove(e)
+	_, found := sf.entries[e]
+	if found {
+		e.count = 0
+		e.next = time.Now().Add(e.interval)
 	}
+	sf.mu.Unlock()
+	return sf
 }
 
 // Modify 修改条目的周期时间
-func (sf *Timing) Modify(e *Entry, interval time.Duration) {
+func (sf *Timing) Modify(e *Entry, interval time.Duration) *Timing {
 	if e == nil {
-		return
+		return sf
 	}
-	e.interval.Store(interval)
-	select {
-	case sf.needFix <- struct{}{}:
-	default:
-	}
+	sf.mu.Lock()
+	e.interval = interval
+	sf.mu.Unlock()
+
+	return sf
 }
 
 // Close close
@@ -137,65 +159,31 @@ func (sf *Timing) Close() error {
 }
 
 func (sf *Timing) run() {
-	now := time.Now()
-	for _, e := range sf.entries {
-		if e.number.Load() >= 0 {
-			e.next = now.Add(e.interval.Load())
-		}
-	}
-
+	ticker := time.NewTicker(sf.tick)
 	for {
-		// 排个序
-		heap.Init(&sf.entries)
-
-		var tm *time.Timer
-		// 获得最近超时的时间
-		if len(sf.entries) == 0 || sf.entries[0].next.IsZero() {
-			tm = time.NewTimer(time.Hour * 10000)
-		} else {
-			tm = time.NewTimer(time.Until(sf.entries[0].next))
-		}
 		select {
-		case now := <-tm.C:
-			for len(sf.entries) > 0 {
-				e := sf.entries[0]
-				if e.number.Load() < 0 { // 是标记过删除,时间到,但未及时删除的,删除之
-					heap.Pop(&sf.entries)
-					continue
-				}
-
+		case now := <-ticker.C:
+			var job []*Entry
+			sf.mu.Lock()
+			for e := range sf.entries {
 				if e.next.After(now) || e.next.IsZero() {
-					break
-				}
-
-				sf.entries.Swap(0, sf.entries.Len()-1)
-				sf.entries.Pop()
-
-				e.job.Run()
-
-				e.count++
-				cnt := e.number.Load()
-				if cnt < 0 || (cnt > 0 && e.count >= cnt) {
-					heap.Init(&sf.entries)
 					continue
 				}
-				e.next = now.Add(e.interval.Load())
-				heap.Push(&sf.entries, e)
+				job = append(job, e)
+				e.count++
+				if e.number == 0 || e.count < e.number {
+					e.next = now.Add(e.interval)
+				} else {
+					delete(sf.entries, e)
+				}
 			}
-
-		case newEntry := <-sf.addEntry:
-			tm.Stop()
-			if newEntry.number.Load() >= 0 {
-				newEntry.next = time.Now().Add(newEntry.interval.Load())
-				sf.entries.Push(newEntry)
+			sf.mu.Unlock()
+			for _, v := range job {
+				v.job.Run()
 			}
-
-		case e := <-sf.delEntry:
-			tm.Stop()
-			sf.entries.remove(e)
 
 		case <-sf.stop:
-			tm.Stop()
+			ticker.Stop()
 			return
 		}
 	}
