@@ -10,19 +10,23 @@ type Entry struct {
 
 	count int32 // 任务执行的次数
 
+	number int32 //任务需要执行的次数
+
+	interval time.Duration
+
 	job Job
 }
 
-type entryByTime []*Entry
+type entriesByTime []*Entry
 
 // Len implement sort.Interface
-func (sf entryByTime) Len() int { return len(sf) }
+func (sf entriesByTime) Len() int { return len(sf) }
 
 // Swap implement sort.Interface
-func (sf entryByTime) Swap(i, j int) { sf[i], sf[j] = sf[j], sf[i] }
+func (sf entriesByTime) Swap(i, j int) { sf[i], sf[j] = sf[j], sf[i] }
 
 // Less implement sort.Interface
-func (sf entryByTime) Less(i, j int) bool {
+func (sf entriesByTime) Less(i, j int) bool {
 	if sf[i].next.IsZero() {
 		return false
 	}
@@ -33,12 +37,12 @@ func (sf entryByTime) Less(i, j int) bool {
 }
 
 // Push implement heap.Interface
-func (sf *entryByTime) Push(x interface{}) {
+func (sf *entriesByTime) Push(x interface{}) {
 	*sf = append(*sf, x.(*Entry))
 }
 
 // Pop implement heap.Interface
-func (sf *entryByTime) Pop() interface{} {
+func (sf *entriesByTime) Pop() interface{} {
 	old := *sf
 	n := len(old)
 	x := old[n-1]
@@ -47,7 +51,7 @@ func (sf *entryByTime) Pop() interface{} {
 }
 
 // 主要用于直接删除,未排序
-func (sf *entryByTime) remove(entry *Entry) {
+func (sf *entriesByTime) remove(entry *Entry) {
 	entries := []*Entry(*sf)
 	for i, e := range entries {
 		if e == entry {

@@ -7,7 +7,7 @@ import (
 )
 
 func Example_entryByTime() {
-	entries := entryByTime([]*Entry{
+	entries := entriesByTime([]*Entry{
 		{count: 5, next: time.Date(2019, 1, 1, 1, 1, 5, 1, time.Local)},
 		{count: 1, next: time.Date(2019, 1, 1, 1, 1, 1, 1, time.Local)},
 		{count: 3, next: time.Date(2019, 1, 1, 1, 1, 3, 1, time.Local)},

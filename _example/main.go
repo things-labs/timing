@@ -8,12 +8,16 @@ import (
 )
 
 func main() {
-
 	tim := timing.New()
 	tim.Start()
-	tim.AddJob(&myjob{timing.NewDuration(time.Second * 10)})
-	tim.AddJob(&myjob{timing.NewDuration(time.Second * 15)})
-	tim.AddJob(&myjob{timing.NewDuration(time.Second * 5)})
+	e1 := tim.AddJob(&myjob{10}, time.Second*10, 0)
+	tim.AddJob(&myjob{5}, time.Second*5, 0)
+	tim.AddJob(&myjob{15}, time.Second*15, 0)
+	tim.AddOneShotJob(&myjob{1}, time.Second)
+	go func() {
+		time.Sleep(time.Second * 20)
+		tim.Delete(e1)
+	}()
 	for {
 		time.Sleep(time.Minute * 10)
 	}
@@ -21,14 +25,10 @@ func main() {
 }
 
 type myjob struct {
-	timeout *timing.Duration
-}
-
-func (sf myjob) Deploy() (*timing.Duration, *timing.Int32) {
-	return sf.timeout, timing.NewInt32(0)
+	index int
 }
 
 func (sf myjob) Run() bool {
-	log.Println(sf.timeout.Load())
+	log.Println(sf.index)
 	return true
 }
