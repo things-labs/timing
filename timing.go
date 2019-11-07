@@ -44,12 +44,16 @@ type Timing struct {
 }
 
 // New new a timing
-func New() *Timing {
-	return &Timing{
+func New(opt ...Option) *Timing {
+	tim := &Timing{
 		entries:  make(map[*Entry]struct{}),
 		tick:     DefaultTick,
 		interval: DefaultInterval,
 	}
+	for _, opt := range opt {
+		opt(tim)
+	}
+	return tim
 }
 
 // Start 启动
