@@ -1,4 +1,4 @@
-// Package timing 实现定时调度功能,采用最小堆实现,不宜执行任务繁重的任务.
+// Package timing 实现定时调度功能,不宜执行任务繁重的任务.
 package timing
 
 import (
@@ -49,6 +49,7 @@ func New(opt ...Option) *Timing {
 		entries:  make(map[*Entry]struct{}),
 		tick:     DefaultTick,
 		interval: DefaultInterval,
+		stop:     make(chan struct{}),
 	}
 	for _, opt := range opt {
 		opt(tim)
@@ -73,6 +74,13 @@ func (sf *Timing) HasRunning() bool {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.running
+}
+
+// Len entry的个数
+func (sf *Timing) Len() int {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	return len(sf.entries)
 }
 
 // AddJob 添加任务
@@ -162,6 +170,14 @@ func (sf *Timing) Close() error {
 	return nil
 }
 
+func wrapJob(job Job) {
+	defer func() {
+		_ = recover()
+	}()
+
+	job.Run()
+}
+
 func (sf *Timing) run() {
 	ticker := time.NewTicker(sf.tick)
 	for {
@@ -183,7 +199,7 @@ func (sf *Timing) run() {
 			}
 			sf.mu.Unlock()
 			for _, v := range job {
-				v.job.Run()
+				wrapJob(v.job)
 			}
 
 		case <-sf.stop:
