@@ -8,7 +8,7 @@ import (
 
 // Timing 定时调度
 type Timing struct {
-	entries  []*Entry
+	entries  entryByTime
 	addEntry chan *Entry
 	delEntry chan *Entry
 
@@ -20,9 +20,8 @@ type Timing struct {
 // New new a timing
 func New() *Timing {
 	return &Timing{
-		entries:  nil,
-		addEntry: make(chan *Entry, 16),
-		delEntry: make(chan *Entry, 16),
+		addEntry: make(chan *Entry, 32),
+		delEntry: make(chan *Entry, 32),
 		stop:     make(chan struct{}),
 	}
 }
@@ -38,15 +37,15 @@ func (sf *Timing) Start() {
 	go sf.run()
 }
 
-// AddCronJob 添加定时任务
-func (sf *Timing) AddCronJob(job CronJob) *Entry {
+// AddJob 添加定时任务
+func (sf *Timing) AddJob(job Job) *Entry {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	entry := &Entry{
 		job: job,
 	}
 	if !sf.running {
-		sf.entries = append(sf.entries, entry)
+		sf.entries.Push(entry)
 	} else {
 		sf.addEntry <- entry
 	}
@@ -58,28 +57,25 @@ func (sf *Timing) run() {
 	for _, e := range sf.entries {
 		if timeout, cnt := e.job.Deploy(); cnt.Load() >= 0 {
 			e.next = now.Add(timeout.Load())
-			sf.entries = append(sf.entries, e)
 		}
 	}
-	heap.Init((*entryByTime)(&sf.entries))
+	heap.Init(&sf.entries)
 	for {
 		var tm *time.Timer
-		now := time.Now()
 		// 获得最近超时的时间
 		if len(sf.entries) == 0 || sf.entries[0].next.IsZero() {
 			tm = time.NewTimer(time.Hour * 10000)
-
 		} else {
-			tm = time.NewTimer(sf.entries[0].next.Sub(now))
+			tm = time.NewTimer(time.Until(sf.entries[0].next))
 		}
 		select {
-		case now = <-tm.C:
+		case now := <-tm.C:
 			for len(sf.entries) > 0 {
 				e := sf.entries[0]
 				if e.next.After(now) || e.next.IsZero() {
 					break
 				}
-				heap.Pop((*entryByTime)(&sf.entries))
+				heap.Pop(&sf.entries)
 				e.count++
 				if !e.job.Run() {
 					continue
@@ -91,19 +87,20 @@ func (sf *Timing) run() {
 					continue
 				}
 				e.next = now.Add(timeout.Load())
-				heap.Push((*entryByTime)(&sf.entries), e)
+				heap.Push(&sf.entries, e)
 			}
 
 		case newEntry := <-sf.addEntry:
 			tm.Stop()
 			if timeout, cnt := newEntry.job.Deploy(); cnt.Load() >= 0 {
 				newEntry.next = time.Now().Add(timeout.Load())
-				heap.Push((*entryByTime)(&sf.entries), newEntry)
+				heap.Push(&sf.entries, newEntry)
 			}
 
 		case e := <-sf.delEntry:
 			tm.Stop()
-			sf.Remove(e)
+			sf.entries.remove(e)
+			heap.Init(&sf.entries)
 		case <-sf.stop:
 			tm.Stop()
 			return
@@ -118,16 +115,7 @@ func (sf *Timing) Remove(e *Entry) {
 	if sf.running {
 		sf.delEntry <- e
 	} else {
-		sf.removeEntry(e)
-	}
-}
-
-func (sf *Timing) removeEntry(entry *Entry) {
-	for i, e := range sf.entries {
-		if e == entry {
-			heap.Fix((*entryByTime)(&sf.entries), i)
-			return
-		}
+		sf.entries.remove(e)
 	}
 }
 

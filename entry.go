@@ -1,6 +1,8 @@
 package timing
 
-import "time"
+import (
+	"time"
+)
 
 // Entry 条目
 type Entry struct {
@@ -8,7 +10,7 @@ type Entry struct {
 
 	count int32 // 任务执行的次数
 
-	job CronJob
+	job Job
 }
 
 type entryByTime []*Entry
@@ -42,4 +44,16 @@ func (sf *entryByTime) Pop() interface{} {
 	x := old[n-1]
 	*sf = old[0 : n-1]
 	return x
+}
+
+// 主要用于直接删除,未排序
+func (sf *entryByTime) remove(entry *Entry) {
+	entries := []*Entry(*sf)
+	for i, e := range entries {
+		if e == entry {
+			entries = append(entries[:i], entries[i+1:]...)
+			break
+		}
+	}
+	*sf = entries
 }

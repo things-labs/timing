@@ -11,9 +11,9 @@ func main() {
 
 	tim := timing.New()
 	tim.Start()
-	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 10)})
-	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 15)})
-	tim.AddCronJob(&myjob{timing.NewDuration(time.Second * 5)})
+	tim.AddJob(&myjob{timing.NewDuration(time.Second * 10)})
+	tim.AddJob(&myjob{timing.NewDuration(time.Second * 15)})
+	tim.AddJob(&myjob{timing.NewDuration(time.Second * 5)})
 	for {
 		time.Sleep(time.Minute * 10)
 	}
