@@ -57,7 +57,7 @@ func New(opt ...Option) *Timing {
 	return tim
 }
 
-// Start 启动
+// Run 启动,不阻塞
 func (sf *Timing) Run() *Timing {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -133,6 +133,7 @@ func (sf *Timing) Delete(e *Entry) {
 	sf.mu.Unlock()
 }
 
+// Restart 重始开始e的计时
 func (sf *Timing) Restart(e *Entry) *Timing {
 	if e == nil {
 		return sf
