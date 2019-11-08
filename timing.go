@@ -127,23 +127,22 @@ func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) *Entry
 }
 
 // Delete 删除指定条目
-func (sf *Timing) Delete(e *Entry) {
+func (sf *Timing) Delete(e *Entry) *Timing {
 	sf.mu.Lock()
 	delete(sf.entries, e)
 	sf.mu.Unlock()
+	return sf
 }
 
-// Restart 重始开始e的计时
+// Restart 重始开始e的计时,e需有AddxxxJobxxx得来的,此API会计数置0和重启计时
 func (sf *Timing) Restart(e *Entry) *Timing {
 	if e == nil {
 		return sf
 	}
 	sf.mu.Lock()
-	_, found := sf.entries[e]
-	if found {
-		e.count = 0
-		e.next = time.Now().Add(e.interval)
-	}
+	e.count = 0
+	e.next = time.Now().Add(e.interval)
+	sf.entries[e] = struct{}{}
 	sf.mu.Unlock()
 	return sf
 }
