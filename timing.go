@@ -35,12 +35,13 @@ type Entry struct {
 
 // Timing 定时调度
 type Timing struct {
-	entries  map[*Entry]struct{}
-	mu       sync.Mutex
-	tick     time.Duration
-	interval time.Duration
-	stop     chan struct{}
-	running  bool
+	entries      map[*Entry]struct{}
+	mu           sync.Mutex
+	tick         time.Duration
+	interval     time.Duration
+	stop         chan struct{}
+	running      bool
+	useGoroutine bool
 }
 
 // New new a timing
@@ -199,7 +200,12 @@ func (sf *Timing) run() {
 			}
 			sf.mu.Unlock()
 			for _, v := range job {
-				wrapJob(v.job)
+				if sf.useGoroutine {
+					go v.job.Run()
+				} else {
+					wrapJob(v.job)
+				}
+
 			}
 
 		case <-sf.stop:

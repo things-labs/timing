@@ -9,8 +9,8 @@ import (
 func TestTiming(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
-	tim := New(WithInterval(interval), WithTick(tick))
-
+	tim := New(WithInterval(interval), WithTick(tick), WithGoroutine())
+	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
 	if got := tim.interval; got != interval {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)
 	}
@@ -24,6 +24,7 @@ func TestTiming(t *testing.T) {
 		t.Errorf("HasRunning() = %v, want %v", got, true)
 	}
 	tim.Run()
+	time.Sleep(time.Millisecond * 200)
 	_ = tim.Close()
 	if got := tim.HasRunning(); got != false {
 		t.Errorf("HasRunning() = %v, want %v", got, false)
