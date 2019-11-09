@@ -32,8 +32,6 @@ type entry struct {
 	job Job
 }
 
-type Element *list.Element
-
 type Wheel struct {
 	curTick     uint32
 	granularity time.Duration
@@ -56,7 +54,7 @@ func NewWheel() {
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
 }
 
-func (sf *Wheel) AddJob(job Job, num uint32, interval time.Duration) Element {
+func (sf *Wheel) AddJob(job Job, num uint32, interval time.Duration) *list.Element {
 	et := &entry{
 		next:     uint32((time.Duration(time.Now().UnixNano()) + interval + sf.granularity - 1) / sf.granularity),
 		count:    0,
