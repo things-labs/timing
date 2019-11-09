@@ -4,9 +4,7 @@
 
 package list
 
-import (
-	"testing"
-)
+import "testing"
 
 func checkListLen(t *testing.T, l *List, len int) bool {
 	if n := l.Len(); n != len {
@@ -67,7 +65,7 @@ func TestList(t *testing.T) {
 	checkListPointers(t, l, []*Element{})
 
 	// Single element list
-	e := l.PushFront(NewElement("a"))
+	e := l.PushFront("a")
 	checkListPointers(t, l, []*Element{e})
 	l.MoveToFront(e)
 	checkListPointers(t, l, []*Element{e})
@@ -77,10 +75,10 @@ func TestList(t *testing.T) {
 	checkListPointers(t, l, []*Element{})
 
 	// Bigger list
-	e2 := l.PushFrontValue(2)
-	e1 := l.PushFrontValue(1)
-	e3 := l.PushBackValue(3)
-	e4 := l.PushBackValue("banana")
+	e2 := l.PushFront(2)
+	e1 := l.PushFront(1)
+	e3 := l.PushBack(3)
+	e4 := l.PushBack("banana")
 	checkListPointers(t, l, []*Element{e1, e2, e3, e4})
 
 	l.Remove(e2)
@@ -103,23 +101,23 @@ func TestList(t *testing.T) {
 	l.MoveToBack(e3) // should be no-op
 	checkListPointers(t, l, []*Element{e1, e4, e3})
 
-	e2 = l.InsertBefore(NewElement(2), e1) // insert before front
+	e2 = l.InsertBefore(2, e1) // insert before front
 	checkListPointers(t, l, []*Element{e2, e1, e4, e3})
 	l.Remove(e2)
-	e2 = l.InsertBefore(NewElement(2), e4) // insert before middle
+	e2 = l.InsertBefore(2, e4) // insert before middle
 	checkListPointers(t, l, []*Element{e1, e2, e4, e3})
 	l.Remove(e2)
-	e2 = l.InsertBefore(NewElement(2), e3) // insert before back
+	e2 = l.InsertBefore(2, e3) // insert before back
 	checkListPointers(t, l, []*Element{e1, e4, e2, e3})
 	l.Remove(e2)
 
-	e2 = l.InsertAfter(NewElement(2), e1) // insert after front
+	e2 = l.InsertAfter(2, e1) // insert after front
 	checkListPointers(t, l, []*Element{e1, e2, e4, e3})
 	l.Remove(e2)
-	e2 = l.InsertAfter(NewElement(2), e4) // insert after middle
+	e2 = l.InsertAfter(2, e4) // insert after middle
 	checkListPointers(t, l, []*Element{e1, e4, e2, e3})
 	l.Remove(e2)
-	e2 = l.InsertAfter(NewElement(2), e3) // insert after back
+	e2 = l.InsertAfter(2, e3) // insert after back
 	checkListPointers(t, l, []*Element{e1, e4, e3, e2})
 	l.Remove(e2)
 
@@ -162,12 +160,12 @@ func TestExtending(t *testing.T) {
 	l1 := New()
 	l2 := New()
 
-	l1.PushBackValue(1)
-	l1.PushBackValue(2)
-	l1.PushBackValue(3)
+	l1.PushBack(1)
+	l1.PushBack(2)
+	l1.PushBack(3)
 
-	l2.PushBackValue(4)
-	l2.PushBackValue(5)
+	l2.PushBack(4)
+	l2.PushBack(5)
 
 	l3 := New()
 	l3.PushBackList(l1)
@@ -205,8 +203,8 @@ func TestExtending(t *testing.T) {
 
 func TestRemove(t *testing.T) {
 	l := New()
-	e1 := l.PushBack(NewElement(1))
-	e2 := l.PushBack(NewElement(2))
+	e1 := l.PushBack(1)
+	e2 := l.PushBack(2)
 	checkListPointers(t, l, []*Element{e1, e2})
 	e := l.Front()
 	l.Remove(e)
@@ -217,12 +215,12 @@ func TestRemove(t *testing.T) {
 
 func TestIssue4103(t *testing.T) {
 	l1 := New()
-	l1.PushBack(NewElement(1))
-	l1.PushBack(NewElement(2))
+	l1.PushBack(1)
+	l1.PushBack(2)
 
 	l2 := New()
-	l2.PushBack(NewElement(3))
-	l2.PushBack(NewElement(4))
+	l2.PushBack(3)
+	l2.PushBack(4)
 
 	e := l1.Front()
 	l2.Remove(e) // l2 should not change because e is not an element of l2
@@ -230,7 +228,7 @@ func TestIssue4103(t *testing.T) {
 		t.Errorf("l2.Len() = %d, want 2", n)
 	}
 
-	l1.InsertBefore(NewElement(8), e)
+	l1.InsertBefore(8, e)
 	if n := l1.Len(); n != 3 {
 		t.Errorf("l1.Len() = %d, want 3", n)
 	}
@@ -238,8 +236,8 @@ func TestIssue4103(t *testing.T) {
 
 func TestIssue6349(t *testing.T) {
 	l := New()
-	l.PushBack(NewElement(1))
-	l.PushBack(NewElement(2))
+	l.PushBack(1)
+	l.PushBack(2)
 
 	e := l.Front()
 	l.Remove(e)
@@ -256,10 +254,10 @@ func TestIssue6349(t *testing.T) {
 
 func TestMove(t *testing.T) {
 	l := New()
-	e1 := l.PushBack(NewElement(1))
-	e2 := l.PushBack(NewElement(2))
-	e3 := l.PushBack(NewElement(3))
-	e4 := l.PushBack(NewElement(4))
+	e1 := l.PushBack(1)
+	e2 := l.PushBack(2)
+	e3 := l.PushBack(3)
+	e4 := l.PushBack(4)
 
 	l.MoveAfter(e3, e3)
 	checkListPointers(t, l, []*Element{e1, e2, e3, e4})
@@ -291,11 +289,11 @@ func TestMove(t *testing.T) {
 // Test PushFront, PushBack, PushFrontList, PushBackList with uninitialized List
 func TestZeroList(t *testing.T) {
 	var l1 = new(List)
-	l1.PushFront(NewElement(1))
+	l1.PushFront(1)
 	checkList(t, l1, []interface{}{1})
 
 	var l2 = new(List)
-	l2.PushBack(NewElement(1))
+	l2.PushBack(1)
 	checkList(t, l2, []interface{}{1})
 
 	var l3 = new(List)
@@ -310,30 +308,30 @@ func TestZeroList(t *testing.T) {
 // Test that a list l is not modified when calling InsertBefore with a mark that is not an element of l.
 func TestInsertBeforeUnknownMark(t *testing.T) {
 	var l List
-	l.PushBack(NewElement(1))
-	l.PushBack(NewElement(2))
-	l.PushBack(NewElement(3))
-	l.InsertBefore(NewElement(1), new(Element))
+	l.PushBack(1)
+	l.PushBack(2)
+	l.PushBack(3)
+	l.InsertBefore(1, new(Element))
 	checkList(t, &l, []interface{}{1, 2, 3})
 }
 
 // Test that a list l is not modified when calling InsertAfter with a mark that is not an element of l.
 func TestInsertAfterUnknownMark(t *testing.T) {
 	var l List
-	l.PushBack(NewElement(1))
-	l.PushBack(NewElement(2))
-	l.PushBack(NewElement(3))
-	l.InsertAfter(NewElement(1), new(Element))
+	l.PushBack(1)
+	l.PushBack(2)
+	l.PushBack(3)
+	l.InsertAfter(1, new(Element))
 	checkList(t, &l, []interface{}{1, 2, 3})
 }
 
 // Test that a list l is not modified when calling MoveAfter or MoveBefore with a mark that is not an element of l.
 func TestMoveUnknownMark(t *testing.T) {
 	var l1 List
-	e1 := l1.PushBack(NewElement(1))
+	e1 := l1.PushBack(1)
 
 	var l2 List
-	e2 := l2.PushBack(NewElement(2))
+	e2 := l2.PushBack(2)
 
 	l1.MoveAfter(e1, e2)
 	checkList(t, &l1, []interface{}{1})
@@ -344,16 +342,55 @@ func TestMoveUnknownMark(t *testing.T) {
 	checkList(t, &l2, []interface{}{2})
 }
 
+func TestInsertEle(t *testing.T) {
+	l0 := New()
+	e0 := &Element{Value: 0}
+	ex := l0.InsertEleBefore(&Element{Value: 2}, e0)
+	if ex != nil {
+		t.Errorf("l0.InsertEleBefore() should be nil")
+	}
+	ex = l0.InsertEleAfter(&Element{Value: 2}, e0)
+	if ex != nil {
+		t.Errorf("l0.InsertEleAfter() should be nil")
+	}
+
+	l := New()
+
+	e1 := l.PushBack(1)
+	e4 := l.PushBack(4)
+	e3 := l.PushBack(3)
+
+	e2 := l.InsertEleBefore(&Element{Value: 2}, e1) // insert before front
+	checkListPointers(t, l, []*Element{e2, e1, e4, e3})
+	l.Remove(e2)
+	e2 = l.InsertEleBefore(&Element{Value: 2}, e4) // insert before middle
+	checkListPointers(t, l, []*Element{e1, e2, e4, e3})
+	l.Remove(e2)
+	e2 = l.InsertEleBefore(&Element{Value: 2}, e3) // insert before back
+	checkListPointers(t, l, []*Element{e1, e4, e2, e3})
+	l.Remove(e2)
+
+	e2 = l.InsertEleAfter(&Element{Value: 2}, e1) // insert after front
+	checkListPointers(t, l, []*Element{e1, e2, e4, e3})
+	l.Remove(e2)
+	e2 = l.InsertEleAfter(&Element{Value: 2}, e4) // insert after middle
+	checkListPointers(t, l, []*Element{e1, e4, e2, e3})
+	l.Remove(e2)
+	e2 = l.InsertEleAfter(&Element{Value: 2}, e3) // insert after back
+	checkListPointers(t, l, []*Element{e1, e4, e3, e2})
+	l.Remove(e2)
+}
+
 func TestSplice(t *testing.T) {
 	l1 := New()
 	l2 := New()
 
-	l1.PushBack(NewElement(1))
-	l1.PushBack(NewElement(2))
-	l1.PushBack(NewElement(3))
+	l1.PushEleBack(&Element{Value: 1})
+	l1.PushEleBack(&Element{Value: 2})
+	l1.PushEleBack(&Element{Value: 3})
 
-	l2.PushBack(NewElement(4))
-	l2.PushBack(NewElement(5))
+	l2.PushEleBack(&Element{Value: 4})
+	l2.PushEleBack(&Element{Value: 5})
 
 	l3 := New()
 	l3.SpliceBackList(l1)
@@ -366,12 +403,13 @@ func TestSplice(t *testing.T) {
 	l1 = New()
 	l2 = New()
 
-	l1.PushBack(NewElement(1))
-	l1.PushBack(NewElement(2))
-	l1.PushBack(NewElement(3))
+	l1.PushEleFront(&Element{Value: 3})
+	l1.PushEleFront(&Element{Value: 2})
+	l1.PushEleFront(&Element{Value: 1})
 
-	l2.PushBack(NewElement(4))
-	l2.PushBack(NewElement(5))
+	l2.PushEleFront(&Element{Value: 5})
+	l2.PushEleFront(&Element{Value: 4})
+
 	l3 = New()
 	l3.SpliceFrontList(l2)
 	checkList(t, l3, []interface{}{4, 5})

@@ -27,13 +27,6 @@ type Element struct {
 	Value interface{}
 }
 
-// NewElement new an element with a new value
-func NewElement(v interface{}) *Element {
-	return &Element{
-		Value: v,
-	}
-}
-
 // Next returns the next list element or nil.
 func (e *Element) Next() *Element {
 	if p := e.next; e.list != nil && p != &e.list.root {
@@ -109,7 +102,7 @@ func (l *List) insert(e, at *Element) *Element {
 
 // insertValue is a convenience wrapper for insert(&Element{Value: v}, at).
 func (l *List) insertValue(v interface{}, at *Element) *Element {
-	return l.insert(NewElement(v), at)
+	return l.insert(&Element{Value: v}, at)
 }
 
 // remove removes e from its list, decrements l.len, and returns e.
@@ -140,18 +133,6 @@ func (l *List) move(e, at *Element) *Element {
 	return e
 }
 
-// PushFront inserts a new element e with value v at the front of list l and returns e.
-func (l *List) PushFrontValue(v interface{}) *Element {
-	l.lazyInit()
-	return l.insertValue(v, &l.root)
-}
-
-// PushBack inserts a new element e with value v at the back of list l and returns e.
-func (l *List) PushBackValue(v interface{}) *Element {
-	l.lazyInit()
-	return l.insertValue(v, l.root.prev)
-}
-
 // Remove removes e from l if e is an element of list l.
 // It returns the element value e.Value.
 // The element must not be nil.
@@ -164,38 +145,38 @@ func (l *List) Remove(e *Element) interface{} {
 	return e.Value
 }
 
-// PushFront inserts a new element e at the front of list l and returns e.
-func (l *List) PushFront(e *Element) *Element {
+// PushFront inserts a new element e with value v at the front of list l and returns e.
+func (l *List) PushFront(v interface{}) *Element {
 	l.lazyInit()
-	return l.insert(e, &l.root)
+	return l.insertValue(v, &l.root)
 }
 
-// PushBack inserts a new element e at the back of list l and returns e.
-func (l *List) PushBack(e *Element) *Element {
+// PushBack inserts a new element e with value v at the back of list l and returns e.
+func (l *List) PushBack(v interface{}) *Element {
 	l.lazyInit()
-	return l.insert(e, l.root.prev)
+	return l.insertValue(v, l.root.prev)
 }
 
 // InsertBefore inserts a new element e with value v immediately before mark and returns e.
 // If mark is not an element of l, the list is not modified.
 // The mark must not be nil.
-func (l *List) InsertBefore(e, mark *Element) *Element {
+func (l *List) InsertBefore(v interface{}, mark *Element) *Element {
 	if mark.list != l {
 		return nil
 	}
 	// see comment in List.Remove about initialization of l
-	return l.insert(e, mark.prev)
+	return l.insertValue(v, mark.prev)
 }
 
 // InsertAfter inserts a new element e with value v immediately after mark and returns e.
 // If mark is not an element of l, the list is not modified.
 // The mark must not be nil.
-func (l *List) InsertAfter(e, mark *Element) *Element {
+func (l *List) InsertAfter(v interface{}, mark *Element) *Element {
 	if mark.list != l {
 		return nil
 	}
 	// see comment in List.Remove about initialization of l
-	return l.insert(e, mark)
+	return l.insertValue(v, mark)
 }
 
 // MoveToFront moves element e to the front of list l.
@@ -258,6 +239,40 @@ func (l *List) PushFrontList(other *List) {
 	}
 }
 
+// PushFront inserts a new element e at the front of list l and returns e.
+func (l *List) PushEleFront(e *Element) *Element {
+	l.lazyInit()
+	return l.insert(e, &l.root)
+}
+
+// PushBack inserts a new element e at the back of list l and returns e.
+func (l *List) PushEleBack(e *Element) *Element {
+	l.lazyInit()
+	return l.insert(e, l.root.prev)
+}
+
+// InsertBefore inserts a new element e immediately before mark and returns e.
+// If mark is not an element of l, the list is not modified.
+// The mark must not be nil.
+func (l *List) InsertEleBefore(e, mark *Element) *Element {
+	if mark.list != l {
+		return nil
+	}
+	// see comment in List.Remove about initialization of l
+	return l.insert(e, mark.prev)
+}
+
+// InsertAfter inserts a new element e with value v immediately after mark and returns e.
+// If mark is not an element of l, the list is not modified.
+// The mark must not be nil.
+func (l *List) InsertEleAfter(e, mark *Element) *Element {
+	if mark.list != l {
+		return nil
+	}
+	// see comment in List.Remove about initialization of l
+	return l.insert(e, mark)
+}
+
 // SpliceBackList inserts an other list at the back of list l.
 // and then remove all the other list element
 // The lists l and other may be the same. They must not be nil.
@@ -267,7 +282,7 @@ func (l *List) SpliceBackList(other *List) {
 	l.lazyInit()
 	for e := other.Front(); e != nil; e = tp {
 		tp = e.Next()
-		l.PushBack(other.remove(e))
+		l.PushEleBack(other.remove(e))
 	}
 }
 
@@ -279,6 +294,6 @@ func (l *List) SpliceFrontList(other *List) {
 	var tp *Element
 	for e := other.Back(); e != nil; e = tp {
 		tp = e.Prev()
-		l.PushFront(other.remove(e))
+		l.PushEleFront(other.remove(e))
 	}
 }
