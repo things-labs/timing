@@ -162,37 +162,45 @@ func TestExtending(t *testing.T) {
 	l1 := New()
 	l2 := New()
 
-	l1.PushBack(NewElement(1))
-	l1.PushBack(NewElement(2))
-	l1.PushBack(NewElement(3))
+	l1.PushBackValue(1)
+	l1.PushBackValue(2)
+	l1.PushBackValue(3)
 
-	l2.PushBack(NewElement(4))
-	l2.PushBack(NewElement(5))
+	l2.PushBackValue(4)
+	l2.PushBackValue(5)
 
 	l3 := New()
 	l3.PushBackList(l1)
 	checkList(t, l3, []interface{}{1, 2, 3})
 	l3.PushBackList(l2)
 	checkList(t, l3, []interface{}{1, 2, 3, 4, 5})
-	checkListLen(t, l1, 0)
-	checkListLen(t, l2, 0)
 
-	l1 = New()
-	l2 = New()
-
-	l1.PushBack(NewElement(1))
-	l1.PushBack(NewElement(2))
-	l1.PushBack(NewElement(3))
-
-	l2.PushBack(NewElement(4))
-	l2.PushBack(NewElement(5))
 	l3 = New()
 	l3.PushFrontList(l2)
 	checkList(t, l3, []interface{}{4, 5})
 	l3.PushFrontList(l1)
 	checkList(t, l3, []interface{}{1, 2, 3, 4, 5})
-	checkListLen(t, l1, 0)
-	checkListLen(t, l2, 0)
+
+	checkList(t, l1, []interface{}{1, 2, 3})
+	checkList(t, l2, []interface{}{4, 5})
+
+	l3 = New()
+	l3.PushBackList(l1)
+	checkList(t, l3, []interface{}{1, 2, 3})
+	l3.PushBackList(l3)
+	checkList(t, l3, []interface{}{1, 2, 3, 1, 2, 3})
+
+	l3 = New()
+	l3.PushFrontList(l1)
+	checkList(t, l3, []interface{}{1, 2, 3})
+	l3.PushFrontList(l3)
+	checkList(t, l3, []interface{}{1, 2, 3, 1, 2, 3})
+
+	l3 = New()
+	l1.PushBackList(l3)
+	checkList(t, l1, []interface{}{1, 2, 3})
+	l1.PushFrontList(l3)
+	checkList(t, l1, []interface{}{1, 2, 3})
 }
 
 func TestRemove(t *testing.T) {
@@ -334,4 +342,41 @@ func TestMoveUnknownMark(t *testing.T) {
 	l1.MoveBefore(e1, e2)
 	checkList(t, &l1, []interface{}{1})
 	checkList(t, &l2, []interface{}{2})
+}
+
+func TestSplice(t *testing.T) {
+	l1 := New()
+	l2 := New()
+
+	l1.PushBack(NewElement(1))
+	l1.PushBack(NewElement(2))
+	l1.PushBack(NewElement(3))
+
+	l2.PushBack(NewElement(4))
+	l2.PushBack(NewElement(5))
+
+	l3 := New()
+	l3.SpliceBackList(l1)
+	checkList(t, l3, []interface{}{1, 2, 3})
+	l3.SpliceBackList(l2)
+	checkList(t, l3, []interface{}{1, 2, 3, 4, 5})
+	checkListLen(t, l1, 0)
+	checkListLen(t, l2, 0)
+
+	l1 = New()
+	l2 = New()
+
+	l1.PushBack(NewElement(1))
+	l1.PushBack(NewElement(2))
+	l1.PushBack(NewElement(3))
+
+	l2.PushBack(NewElement(4))
+	l2.PushBack(NewElement(5))
+	l3 = New()
+	l3.SpliceFrontList(l2)
+	checkList(t, l3, []interface{}{4, 5})
+	l3.SpliceFrontList(l1)
+	checkList(t, l3, []interface{}{1, 2, 3, 4, 5})
+	checkListLen(t, l1, 0)
+	checkListLen(t, l2, 0)
 }

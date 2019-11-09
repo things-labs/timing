@@ -240,10 +240,28 @@ func (l *List) MoveAfter(e, mark *Element) {
 	l.move(e, mark)
 }
 
-// PushBackList inserts  an other list at the back of list l.
-// and then remove all the other list element
+// PushBackList inserts a copy of an other list at the back of list l.
 // The lists l and other may be the same. They must not be nil.
 func (l *List) PushBackList(other *List) {
+	l.lazyInit()
+	for i, e := other.Len(), other.Front(); i > 0; i, e = i-1, e.Next() {
+		l.insertValue(e.Value, l.root.prev)
+	}
+}
+
+// PushFrontList inserts a copy of an other list at the front of list l.
+// The lists l and other may be the same. They must not be nil.
+func (l *List) PushFrontList(other *List) {
+	l.lazyInit()
+	for i, e := other.Len(), other.Back(); i > 0; i, e = i-1, e.Prev() {
+		l.insertValue(e.Value, &l.root)
+	}
+}
+
+// SpliceBackList inserts an other list at the back of list l.
+// and then remove all the other list element
+// The lists l and other may be the same. They must not be nil.
+func (l *List) SpliceBackList(other *List) {
 	var tp *Element
 
 	l.lazyInit()
@@ -253,10 +271,10 @@ func (l *List) PushBackList(other *List) {
 	}
 }
 
-// PushFrontList inserts an other list at the front of list l.
+// SpliceFrontList inserts an other list at the front of list l.
 // and then remove all the other list element
 // The lists l and other may be the same. They must not be nil.
-func (l *List) PushFrontList(other *List) {
+func (l *List) SpliceFrontList(other *List) {
 	l.lazyInit()
 	var tp *Element
 	for e := other.Back(); e != nil; e = tp {
