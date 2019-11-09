@@ -1,8 +1,9 @@
 package timing
 
 import (
-	"container/list"
 	"time"
+
+	"github.com/thinkgos/list"
 )
 
 const (
