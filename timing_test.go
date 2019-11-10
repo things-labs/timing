@@ -53,14 +53,14 @@ func TestJob(t *testing.T) {
 		t.Errorf("HasRunning() = %v, want %v", interval, time.Second*2)
 	}
 
-	tim.Restart(e1)
+	tim.Start(e1)
 
 	tim.Delete(e1)
 	if got := tim.Len(); got != 3 {
 		t.Errorf("HasRunning() = %v, want %v", got, 3)
 	}
 
-	tim.Restart(nil)
+	tim.Start(nil)
 	tim.Modify(nil, time.Second)
 
 }
