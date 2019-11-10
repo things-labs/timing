@@ -1,6 +1,7 @@
 package timing
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -121,11 +122,15 @@ func (sf *Wheel) addTimer(e *Element) *Element {
 }
 
 func (sf *Wheel) cascade() {
-	for level, index := 0, 0; index == 0 && level < tvnNum; level++ {
-		index = int((sf.curTick >> (tvrSize + level*tvnNum)) & tvnMask)
+	for level := 0; level < tvnNum; level++ {
+		index := int((sf.curTick >> (tvrSize + level*tvnNum)) & tvnMask)
 		spoke := sf.spokes[tvrSize+tvnSize*level+index]
 		for spoke.Len() > 0 {
+			fmt.Println("aa")
 			sf.addTimer((*Element)(spoke.PopFront()))
+		}
+		if index == 0 {
+			break
 		}
 	}
 }
@@ -134,15 +139,11 @@ func (sf *Wheel) runWork() {
 	var waitMs time.Duration
 
 	tick := time.NewTimer(sf.granularity)
-
 	for {
 		select {
 		case now := <-tick.C:
 			nano := now.UnixNano()
-			waitMs = (time.Duration(nano) % sf.granularity) / time.Millisecond
-			if waitMs == 0 {
-				waitMs = sf.granularity
-			}
+			waitMs = (time.Duration(nano) % sf.granularity)
 			past := uint32(nano/int64(sf.granularity)) - sf.curTick
 			sf.rw.Lock()
 			for ; past > 0; past-- {
