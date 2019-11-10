@@ -45,7 +45,7 @@ type Wheel struct {
 	rw          sync.RWMutex
 }
 
-func NewWheel() {
+func NewWheel() *Wheel {
 	wl := &Wheel{
 		spokes:      make([]list.List, tvrSize+tvnSize*tvnNum),
 		doNow:       list.List{},
@@ -53,6 +53,7 @@ func NewWheel() {
 	}
 
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
+	return wl
 }
 
 func (sf *Wheel) Run() *Wheel {
@@ -62,7 +63,7 @@ func (sf *Wheel) Run() *Wheel {
 
 func (sf *Wheel) AddJob(job Job, timeout time.Duration) *Element {
 	e := &Element{
-		Value: entry{
+		Value: &entry{
 			next:     uint32((time.Duration(time.Now().UnixNano()) + timeout + sf.granularity - 1) / sf.granularity),
 			interval: timeout,
 			job:      job,
@@ -78,30 +79,28 @@ func (sf *Wheel) AddJob(job Job, timeout time.Duration) *Element {
 }
 
 func (sf *Wheel) addTimer(e *Element) *Element {
-	var spokeIdx uint32
+	var spokeIdx int
 
 	next := e.entry().next
 	if idx := next - sf.curTick; idx < tvrSize {
-		spokeIdx = next & tvrMask
+		spokeIdx = int(next & tvrMask)
 	} else {
 		// 计算在哪一个层级
 		level := 0
 		for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
 			idx >>= tvnBits
 		}
-		spokeIdx = tvrSize + tvnSize*level +
-			((next >> (tvrBits + tvnBits*level)) & tvnMask)
+		spokeIdx = tvrSize + tvnSize*level + int((next>>(tvrBits+tvnBits*level))&tvnMask)
 	}
 	return (*Element)(sf.spokes[spokeIdx].PushElementBack((*list.Element)(e)))
 }
 
 func (sf *Wheel) cascade() {
 	for level, index := 0, 0; index == 0 && level < tvnNum; level++ {
-		index = (sf.curTick >> (tvrMask + level*tvnNum)) & tvnMask
+		index = int((sf.curTick >> (tvrSize + level*tvnNum)) & tvnMask)
 		spoke := sf.spokes[tvrSize+tvnSize*level+index]
-		for e, tmp := spoke.Front(), spoke.Front(); e != nil; e = tmp {
-			tmp = e.Next()
-			sf.addTimer((*Element)(spoke.RemoveElement(e)))
+		for spoke.Len() > 0 {
+			sf.addTimer((*Element)(spoke.PopFront()))
 		}
 	}
 }
