@@ -1,2 +1,4 @@
-github.com/thinkgos/list v0.0.2 h1:uY8GJF/ehLPDHe0lHZOk5ptItOiBKAxJ+ruaD8NmiR8=
-github.com/thinkgos/list v0.0.2/go.mod h1:fXCZ52VQhsJCOO7tiT0mv+gTuaGsa0WHJCGyuWMnc8Y=
+github.com/thinkgos/list v0.0.3 h1:6Em/1aqrcEHUUzrr6NxrtswVI51YJm4/31jioBZXhuw=
+github.com/thinkgos/list v0.0.3/go.mod h1:fXCZ52VQhsJCOO7tiT0mv+gTuaGsa0WHJCGyuWMnc8Y=
+github.com/thinkgos/list v0.0.4 h1:CEC7PrigqLrXNZo7Ex3eUbexbn+8eBrtJSPecXuSES8=
+github.com/thinkgos/list v0.0.4/go.mod h1:fXCZ52VQhsJCOO7tiT0mv+gTuaGsa0WHJCGyuWMnc8Y=

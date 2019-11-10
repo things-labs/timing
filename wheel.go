@@ -1,6 +1,7 @@
 package timing
 
 import (
+	"sync"
 	"time"
 
 	"github.com/thinkgos/list"
@@ -11,10 +12,10 @@ const (
 )
 
 const (
-	// 主级 + 4个层级共32位
+	// 主级 + 4个层级共5级 占32位
 	tvrBits = 8 // 主级占8位
 	tvnBits = 6 // 4个层级各占6位
-	tvnNum  = 4 // 级轮个数
+	tvnNum  = 4 // 层级个数
 	tvrSize = 1 << tvrBits
 	tvnSize = 1 << tvnBits
 	tvrMask = tvrSize - 1
@@ -22,87 +23,92 @@ const (
 )
 
 type entry struct {
+	// 下一个超时
 	next uint32
-	// 任务已经执行的次数
-	count uint32
-	// 任务需要执行的次数
-	number uint32
 	// 超时时间
 	interval time.Duration
 	// 任务
 	job Job
 }
 
+type Element list.Element
+
+func (sf *Element) entry() *entry {
+	return sf.Value.(*entry)
+}
+
 type Wheel struct {
 	curTick     uint32
 	granularity time.Duration
-	spokes      []*list.List
-	doNow       *list.List
+	spokes      []list.List
+	doNow       list.List
+	rw          sync.RWMutex
 }
 
 func NewWheel() {
 	wl := &Wheel{
-		spokes:      make([]*list.List, tvrSize+tvnSize*tvnNum),
-		doNow:       list.New(),
+		spokes:      make([]list.List, tvrSize+tvnSize*tvnNum),
+		doNow:       list.List{},
 		granularity: DefaultGranularity,
-	}
-
-	// init all spoke
-	for i := range wl.spokes {
-		wl.spokes[i] = list.New()
 	}
 
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
 }
 
-func (sf *Wheel) AddJob(job Job, num uint32, interval time.Duration) *list.Element {
-	et := &entry{
-		next:     uint32((time.Duration(time.Now().UnixNano()) + interval + sf.granularity - 1) / sf.granularity),
-		count:    0,
-		number:   num,
-		interval: interval,
-		job:      job,
-	}
-
-	if et.next == sf.curTick {
-		return sf.doNow.PushBack(et)
-	}
-	return sf.addTimer(et)
+func (sf *Wheel) Run() *Wheel {
+	go sf.runWork()
+	return sf
 }
 
-func (sf *Wheel) addTimer(et *entry) *list.Element {
-	next := et.next
-	idx := next - sf.curTick
-	if idx < tvrSize {
-		spokeIdx := next & tvrMask
-		return sf.spokes[spokeIdx].PushBack(et)
+func (sf *Wheel) AddJob(job Job, timeout time.Duration) *Element {
+	e := &Element{
+		Value: entry{
+			next:     uint32((time.Duration(time.Now().UnixNano()) + timeout + sf.granularity - 1) / sf.granularity),
+			interval: timeout,
+			job:      job,
+		},
 	}
 
-	// 计算在哪一个层级
-	level := 0
-	for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
-		idx >>= tvnBits
+	sf.rw.Lock()
+	defer sf.rw.Unlock()
+	if e.entry().next == sf.curTick {
+		return (*Element)(sf.doNow.PushElementBack((*list.Element)(e)))
 	}
-	spokeIdx := tvrSize + tvnSize*level +
-		((next >> (tvrBits + tvnBits*level)) & tvnMask)
-	return sf.spokes[spokeIdx].PushBack(et)
+	return sf.addTimer(e)
+}
+
+func (sf *Wheel) addTimer(e *Element) *Element {
+	var spokeIdx uint32
+
+	next := e.entry().next
+	if idx := next - sf.curTick; idx < tvrSize {
+		spokeIdx = next & tvrMask
+	} else {
+		// 计算在哪一个层级
+		level := 0
+		for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
+			idx >>= tvnBits
+		}
+		spokeIdx = tvrSize + tvnSize*level +
+			((next >> (tvrBits + tvnBits*level)) & tvnMask)
+	}
+	return (*Element)(sf.spokes[spokeIdx].PushElementBack((*list.Element)(e)))
 }
 
 func (sf *Wheel) cascade() {
 	for level, index := 0, 0; index == 0 && level < tvnNum; level++ {
 		index = (sf.curTick >> (tvrMask + level*tvnNum)) & tvnMask
-		spokeIdx := tvrSize + tvnSize*level + index
-		lists := sf.spokes[spokeIdx]
-		for e, tmp := lists.Front(), lists.Front(); e != nil; e = tmp {
+		spoke := sf.spokes[tvrSize+tvnSize*level+index]
+		for e, tmp := spoke.Front(), spoke.Front(); e != nil; e = tmp {
 			tmp = e.Next()
-			lists.Remove(e)
-			sf.addTimer(e.Value.(*entry))
+			sf.addTimer((*Element)(spoke.RemoveElement(e)))
 		}
 	}
 }
 
 func (sf *Wheel) runWork() {
 	var waitMs time.Duration
+
 	tick := time.NewTimer(sf.granularity)
 
 	for {
@@ -111,6 +117,7 @@ func (sf *Wheel) runWork() {
 			nano := now.UnixNano()
 			waitMs = time.Duration(nano) % sf.granularity
 			past := uint32(nano/int64(sf.granularity)) - sf.curTick
+			sf.rw.Lock()
 			for ; past > 0; past-- {
 				sf.curTick++
 				index := sf.curTick & tvrMask
@@ -118,13 +125,18 @@ func (sf *Wheel) runWork() {
 					sf.cascade()
 				}
 
-				sf.doNow.PushBackList(sf.spokes[index])
-				sf.spokes[index] = list.New()
+				sf.doNow.SpliceBackList(&sf.spokes[index])
 			}
+			sf.rw.Unlock()
 		}
-		// TODO: do all read work
-
+		sf.rw.Lock()
+		for sf.doNow.Len() > 0 {
+			e := sf.doNow.PopFront()
+			sf.rw.Unlock()
+			(*Element)(e).entry().job.Run()
+			sf.rw.Lock()
+		}
+		sf.rw.Unlock()
 		tick.Reset(waitMs)
 	}
-
 }
