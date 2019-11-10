@@ -38,11 +38,16 @@ func (sf *Element) entry() *entry {
 }
 
 type Wheel struct {
-	curTick     uint32
-	granularity time.Duration
 	spokes      []*list.List
 	doNow       *list.List
-	rw          sync.RWMutex
+	curTick     uint32
+	granularity time.Duration
+	interval    time.Duration
+
+	rw           sync.RWMutex
+	stop         chan struct{}
+	running      bool
+	useGoroutine bool
 }
 
 func NewWheel() *Wheel {
@@ -50,6 +55,8 @@ func NewWheel() *Wheel {
 		spokes:      make([]*list.List, tvrSize+tvnSize*tvnNum),
 		doNow:       list.New(),
 		granularity: time.Millisecond, //DefaultTick,
+		interval:    DefaultInterval,
+		stop:        make(chan struct{}),
 	}
 
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
@@ -60,8 +67,26 @@ func NewWheel() *Wheel {
 }
 
 func (sf *Wheel) Run() *Wheel {
+	sf.rw.Lock()
+	defer sf.rw.Unlock()
+
+	if sf.running {
+		return sf
+	}
+	sf.running = true
 	go sf.runWork()
 	return sf
+}
+
+// Close close
+func (sf *Wheel) Close() error {
+	sf.rw.Lock()
+	defer sf.rw.Unlock()
+	if sf.running {
+		sf.stop <- struct{}{}
+		sf.running = false
+	}
+	return nil
 }
 
 func (sf *Wheel) nextTimeout(nowNano int64, timeout time.Duration) uint32 {
@@ -106,34 +131,22 @@ func (sf *Wheel) AddPersistJobFunc(f JobFunc, interval time.Duration) *Element {
 	return sf.AddJob(f, Persist, interval)
 }
 
-func (sf *Wheel) addTimer(e *Element) *Element {
-	var spokeIdx int
-
-	next := e.entry().next
-	if idx := next - sf.curTick; idx < tvrSize {
-		spokeIdx = int(next & tvrMask)
-	} else {
-		// 计算在哪一个层级
-		level := 0
-		for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
-			idx >>= tvnBits
-		}
-		spokeIdx = tvrSize + tvnSize*level + int((next>>(tvrBits+tvnBits*level))&tvnMask)
-	}
-	return (*Element)(sf.spokes[spokeIdx].PushElementBack((*list.Element)(e)))
+func (sf *Wheel) Delete(e *Element) *Wheel {
+	sf.rw.Lock()
+	(*list.Element)(e).RemoveSelf()
+	sf.rw.Unlock()
+	return sf
 }
 
-func (sf *Wheel) cascade() {
-	for level := 0; ; {
-		index := int((sf.curTick >> (tvrBits + level*tvnNum)) & tvnMask)
-		spoke := sf.spokes[tvrSize+tvnSize*level+index]
-		for spoke.Len() > 0 {
-			sf.addTimer((*Element)(spoke.PopFront()))
-		}
-		if level++; !(index == 0 && level < tvnNum) {
-			break
-		}
-	}
+func (sf *Wheel) Restart(e *Element) *Wheel {
+	sf.rw.Lock()
+	(*list.Element)(e).RemoveSelf() // should remove from old list
+	entry := e.entry()
+	entry.count = 0
+	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
+	sf.addTimer(e)
+	sf.rw.Unlock()
+	return sf
 }
 
 func (sf *Wheel) runWork() {
@@ -145,9 +158,8 @@ func (sf *Wheel) runWork() {
 		case now := <-tick.C:
 			nano := now.UnixNano()
 			waitMs = (time.Duration(nano) % sf.granularity)
-			past := uint32(nano/int64(sf.granularity)) - sf.curTick
 			sf.rw.Lock()
-			for ; past > 0; past-- {
+			for past := uint32(nano/int64(sf.granularity)) - sf.curTick; past > 0; past-- {
 				sf.curTick++
 				index := sf.curTick & tvrMask
 				if index == 0 {
@@ -171,7 +183,40 @@ func (sf *Wheel) runWork() {
 			}
 			sf.rw.Unlock()
 			tick.Reset(waitMs)
+		case <-sf.stop:
+			tick.Stop()
+			return
 		}
-
 	}
+}
+
+// 层叠计算每一层
+func (sf *Wheel) cascade() {
+	for level := 0; ; {
+		index := int((sf.curTick >> (tvrBits + level*tvnNum)) & tvnMask)
+		spoke := sf.spokes[tvrSize+tvnSize*level+index]
+		for spoke.Len() > 0 {
+			sf.addTimer((*Element)(spoke.PopFront()))
+		}
+		if level++; !(index == 0 && level < tvnNum) {
+			break
+		}
+	}
+}
+
+func (sf *Wheel) addTimer(e *Element) *Element {
+	var spokeIdx int
+
+	next := e.entry().next
+	if idx := next - sf.curTick; idx < tvrSize {
+		spokeIdx = int(next & tvrMask)
+	} else {
+		// 计算在哪一个层级
+		level := 0
+		for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
+			idx >>= tvnBits
+		}
+		spokeIdx = tvrSize + tvnSize*level + int((next>>(tvrBits+tvnBits*level))&tvnMask)
+	}
+	return (*Element)(sf.spokes[spokeIdx].PushElementBack((*list.Element)(e)))
 }

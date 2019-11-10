@@ -12,3 +12,11 @@ type JobFunc func()
 func (sf JobFunc) Run() {
 	sf()
 }
+
+func wrapJob(job Job) {
+	defer func() {
+		_ = recover()
+	}()
+
+	job.Run()
+}

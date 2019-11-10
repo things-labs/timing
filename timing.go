@@ -77,6 +77,17 @@ func (sf *Timing) HasRunning() bool {
 	return sf.running
 }
 
+// Close close
+func (sf *Timing) Close() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.running {
+		sf.stop <- struct{}{}
+		sf.running = false
+	}
+	return nil
+}
+
 // Len entry的个数
 func (sf *Timing) Len() int {
 	sf.mu.Lock()
@@ -158,25 +169,6 @@ func (sf *Timing) Modify(e *Entry, interval time.Duration) *Timing {
 	sf.mu.Unlock()
 
 	return sf
-}
-
-// Close close
-func (sf *Timing) Close() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
-		sf.stop <- struct{}{}
-		sf.running = false
-	}
-	return nil
-}
-
-func wrapJob(job Job) {
-	defer func() {
-		_ = recover()
-	}()
-
-	job.Run()
 }
 
 func (sf *Timing) run() {
