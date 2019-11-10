@@ -8,10 +8,6 @@ import (
 )
 
 const (
-	DefaultGranularity = time.Millisecond * 100
-)
-
-const (
 	// 主级 + 4个层级共5级 占32位
 	tvrBits = 8 // 主级占8位
 	tvnBits = 6 // 4个层级各占6位
@@ -53,7 +49,7 @@ func NewWheel() *Wheel {
 	wl := &Wheel{
 		spokes:      make([]list.List, tvrSize+tvnSize*tvnNum),
 		doNow:       list.List{},
-		granularity: DefaultGranularity,
+		granularity: time.Millisecond, //DefaultTick,
 	}
 
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
@@ -143,7 +139,10 @@ func (sf *Wheel) runWork() {
 		select {
 		case now := <-tick.C:
 			nano := now.UnixNano()
-			waitMs = time.Duration(nano) % sf.granularity
+			waitMs = (time.Duration(nano) % sf.granularity) / time.Millisecond
+			if waitMs == 0 {
+				waitMs = sf.granularity
+			}
 			past := uint32(nano/int64(sf.granularity)) - sf.curTick
 			sf.rw.Lock()
 			for ; past > 0; past-- {
@@ -154,24 +153,23 @@ func (sf *Wheel) runWork() {
 				}
 				sf.doNow.SpliceBackList(&sf.spokes[index])
 			}
-			sf.rw.Unlock()
-		}
-		now := time.Now().UnixNano()
-		sf.rw.Lock()
-		for sf.doNow.Len() > 0 {
-			e := (*Element)(sf.doNow.PopFront())
-			entry := e.entry()
 
-			entry.count++
-			if entry.number == 0 || entry.count < entry.number {
-				entry.next = sf.nextTimeout(now, entry.interval)
-				sf.addTimer(e)
+			for sf.doNow.Len() > 0 {
+				e := (*Element)(sf.doNow.PopFront())
+				entry := e.entry()
+
+				entry.count++
+				if entry.number == 0 || entry.count < entry.number {
+					entry.next = sf.nextTimeout(nano, entry.interval)
+					sf.addTimer(e)
+				}
+				sf.rw.Unlock()
+				entry.job.Run()
+				sf.rw.Lock()
 			}
 			sf.rw.Unlock()
-			entry.job.Run()
-			sf.rw.Lock()
+			tick.Reset(waitMs)
 		}
-		sf.rw.Unlock()
-		tick.Reset(waitMs)
+
 	}
 }
