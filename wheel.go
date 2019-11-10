@@ -1,7 +1,6 @@
 package timing
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -41,19 +40,22 @@ func (sf *Element) entry() *entry {
 type Wheel struct {
 	curTick     uint32
 	granularity time.Duration
-	spokes      []list.List
-	doNow       list.List
+	spokes      []*list.List
+	doNow       *list.List
 	rw          sync.RWMutex
 }
 
 func NewWheel() *Wheel {
 	wl := &Wheel{
-		spokes:      make([]list.List, tvrSize+tvnSize*tvnNum),
-		doNow:       list.List{},
+		spokes:      make([]*list.List, tvrSize+tvnSize*tvnNum),
+		doNow:       list.New(),
 		granularity: time.Millisecond, //DefaultTick,
 	}
 
 	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
+	for i := 0; i < len(wl.spokes); i++ {
+		wl.spokes[i] = list.New()
+	}
 	return wl
 }
 
@@ -122,14 +124,13 @@ func (sf *Wheel) addTimer(e *Element) *Element {
 }
 
 func (sf *Wheel) cascade() {
-	for level := 0; level < tvnNum; level++ {
-		index := int((sf.curTick >> (tvrSize + level*tvnNum)) & tvnMask)
+	for level := 0; ; {
+		index := int((sf.curTick >> (tvrBits + level*tvnNum)) & tvnMask)
 		spoke := sf.spokes[tvrSize+tvnSize*level+index]
 		for spoke.Len() > 0 {
-			fmt.Println("aa")
 			sf.addTimer((*Element)(spoke.PopFront()))
 		}
-		if index == 0 {
+		if level++; !(index == 0 && level < tvnNum) {
 			break
 		}
 	}
@@ -152,7 +153,7 @@ func (sf *Wheel) runWork() {
 				if index == 0 {
 					sf.cascade()
 				}
-				sf.doNow.SpliceBackList(&sf.spokes[index])
+				sf.doNow.SpliceBackList(sf.spokes[index])
 			}
 
 			for sf.doNow.Len() > 0 {
