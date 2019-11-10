@@ -25,7 +25,11 @@ const (
 type entry struct {
 	// 下一个超时
 	next uint32
-	// 超时时间
+	// 任务已经执行的次数
+	count uint32
+	//任务需要执行的次数
+	number uint32
+	// 间隔
 	interval time.Duration
 	// 任务
 	job Job
@@ -61,11 +65,16 @@ func (sf *Wheel) Run() *Wheel {
 	return sf
 }
 
-func (sf *Wheel) AddJob(job Job, timeout time.Duration) *Element {
+func (sf *Wheel) nextTimeout(nowNano int64, timeout time.Duration) uint32 {
+	return uint32((time.Duration(nowNano) + timeout + sf.granularity - 1) / sf.granularity)
+}
+
+func (sf *Wheel) AddJob(job Job, num uint32, interval time.Duration) *Element {
 	e := &Element{
 		Value: &entry{
-			next:     uint32((time.Duration(time.Now().UnixNano()) + timeout + sf.granularity - 1) / sf.granularity),
-			interval: timeout,
+			next:     sf.nextTimeout(time.Now().UnixNano(), interval),
+			number:   num,
+			interval: interval,
 			job:      job,
 		},
 	}
@@ -76,6 +85,26 @@ func (sf *Wheel) AddJob(job Job, timeout time.Duration) *Element {
 		return (*Element)(sf.doNow.PushElementBack((*list.Element)(e)))
 	}
 	return sf.addTimer(e)
+}
+
+func (sf *Wheel) AddOneShotJob(job Job, interval time.Duration) *Element {
+	return sf.AddJob(job, OneShot, interval)
+}
+
+func (sf *Wheel) AddPersistJob(job Job, interval time.Duration) *Element {
+	return sf.AddJob(job, Persist, interval)
+}
+
+func (sf *Wheel) AddJobFunc(f JobFunc, num uint32, interval time.Duration) *Element {
+	return sf.AddJob(f, num, interval)
+}
+
+func (sf *Wheel) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Element {
+	return sf.AddJob(f, OneShot, interval)
+}
+
+func (sf *Wheel) AddPersistJobFunc(f JobFunc, interval time.Duration) *Element {
+	return sf.AddJob(f, Persist, interval)
 }
 
 func (sf *Wheel) addTimer(e *Element) *Element {
@@ -123,16 +152,23 @@ func (sf *Wheel) runWork() {
 				if index == 0 {
 					sf.cascade()
 				}
-
 				sf.doNow.SpliceBackList(&sf.spokes[index])
 			}
 			sf.rw.Unlock()
 		}
+		now := time.Now().UnixNano()
 		sf.rw.Lock()
 		for sf.doNow.Len() > 0 {
-			e := sf.doNow.PopFront()
+			e := (*Element)(sf.doNow.PopFront())
+			entry := e.entry()
+
+			entry.count++
+			if entry.number == 0 || entry.count < entry.number {
+				entry.next = sf.nextTimeout(now, entry.interval)
+				sf.addTimer(e)
+			}
 			sf.rw.Unlock()
-			(*Element)(e).entry().job.Run()
+			entry.job.Run()
 			sf.rw.Lock()
 		}
 		sf.rw.Unlock()
