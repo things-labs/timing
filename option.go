@@ -10,7 +10,7 @@ type Option func(*Timing)
 // WithTick override interval 时间粒子
 func WithTick(tick time.Duration) Option {
 	return func(timing *Timing) {
-		timing.tick = tick
+		timing.granularity = tick
 	}
 }
 

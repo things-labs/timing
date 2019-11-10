@@ -9,16 +9,16 @@ import (
 
 const (
 	// 主级 + 4个层级共5级 占32位
-	tvrBits = 8 // 主级占8位
-	tvnBits = 6 // 4个层级各占6位
-	tvnNum  = 4 // 层级个数
-	tvrSize = 1 << tvrBits
-	tvnSize = 1 << tvnBits
-	tvrMask = tvrSize - 1
-	tvnMask = tvnSize - 1
+	tvRBits = 8            // 主级占8位
+	tvNBits = 6            // 4个层级各占6位
+	tvNNum  = 4            // 层级个数
+	tvRSize = 1 << tvRBits // 主级槽个数
+	tvNSize = 1 << tvNBits // 每个层级槽个数
+	tvRMask = tvRSize - 1  // 主轮掩码
+	tvNMask = tvNSize - 1  // 层级掩码
 )
 
-type entry struct {
+type internalEntry struct {
 	// 下一个超时
 	next uint32
 	// 任务已经执行的次数
@@ -31,30 +31,33 @@ type entry struct {
 	job Job
 }
 
+// Element 定时器元素
 type Element list.Element
 
-func (sf *Element) entry() *entry {
-	return sf.Value.(*entry)
+// 内部使用,条目
+func (sf *Element) entry() *internalEntry {
+	return sf.Value.(*internalEntry)
 }
 
+// Wheel 时间轮实现
 type Wheel struct {
-	spokes      []*list.List
-	doNow       *list.List
-	curTick     uint32
-	granularity time.Duration
-	interval    time.Duration
-
+	spokes       []*list.List // 轮的槽
+	doNow        *list.List
+	curTick      uint32
+	granularity  time.Duration
+	interval     time.Duration
 	rw           sync.RWMutex
 	stop         chan struct{}
 	running      bool
 	useGoroutine bool
 }
 
+// NewWheel new a wheel
 func NewWheel() *Wheel {
 	wl := &Wheel{
-		spokes:      make([]*list.List, tvrSize+tvnSize*tvnNum),
+		spokes:      make([]*list.List, tvRSize+tvNSize*tvNNum),
 		doNow:       list.New(),
-		granularity: time.Millisecond, //DefaultTick,
+		granularity: DefaultGranularity,
 		interval:    DefaultInterval,
 		stop:        make(chan struct{}),
 	}
@@ -66,6 +69,7 @@ func NewWheel() *Wheel {
 	return wl
 }
 
+// Run 运行,不阻塞
 func (sf *Wheel) Run() *Wheel {
 	sf.rw.Lock()
 	defer sf.rw.Unlock()
@@ -76,6 +80,13 @@ func (sf *Wheel) Run() *Wheel {
 	sf.running = true
 	go sf.runWork()
 	return sf
+}
+
+// HasRunning 运行状态
+func (sf *Wheel) HasRunning() bool {
+	sf.rw.RLock()
+	defer sf.rw.RUnlock()
+	return sf.running
 }
 
 // Close close
@@ -89,46 +100,93 @@ func (sf *Wheel) Close() error {
 	return nil
 }
 
+// Len 条目个数
+func (sf *Wheel) Len() int {
+	var length int
+
+	sf.rw.RLock()
+	for i := 0; i < len(sf.spokes); i++ {
+		length += sf.spokes[i].Len()
+	}
+	length += sf.doNow.Len()
+	sf.rw.RUnlock()
+	return length
+}
+
 func (sf *Wheel) nextTimeout(nowNano int64, timeout time.Duration) uint32 {
 	return uint32((time.Duration(nowNano) + timeout + sf.granularity - 1) / sf.granularity)
 }
 
-func (sf *Wheel) AddJob(job Job, num uint32, interval time.Duration) *Element {
-	e := &Element{
-		Value: &entry{
-			next:     sf.nextTimeout(time.Now().UnixNano(), interval),
+// NewJob 新建一个条目,条目未启动定时
+func (sf *Wheel) NewJob(job Job, num uint32, interval ...time.Duration) *Element {
+	val := sf.interval
+	if len(interval) > 0 {
+		val = interval[0]
+	}
+
+	return &Element{
+		Value: &internalEntry{
 			number:   num,
-			interval: interval,
+			interval: val,
 			job:      job,
 		},
 	}
+}
+
+// NewJobFunc 新建一个条目,条目未启动定时
+func (sf *Wheel) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Element {
+	return sf.NewJob(f, num, interval...)
+}
+
+// AddJob 添加任务
+func (sf *Wheel) AddJob(job Job, num uint32, interval ...time.Duration) *Element {
+	e := sf.NewJob(job, num, interval...)
+	entry := e.entry()
+	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
 
 	sf.rw.Lock()
 	defer sf.rw.Unlock()
-	if e.entry().next == sf.curTick {
+	if entry.next == sf.curTick {
 		return (*Element)(sf.doNow.PushElementBack((*list.Element)(e)))
 	}
 	return sf.addTimer(e)
 }
 
-func (sf *Wheel) AddOneShotJob(job Job, interval time.Duration) *Element {
-	return sf.AddJob(job, OneShot, interval)
+// AddOneShotJob 添加一次性任务
+func (sf *Wheel) AddOneShotJob(job Job, interval ...time.Duration) *Element {
+	return sf.AddJob(job, OneShot, interval...)
 }
 
-func (sf *Wheel) AddPersistJob(job Job, interval time.Duration) *Element {
-	return sf.AddJob(job, Persist, interval)
+// AddPersistJob 添加周期性任务
+func (sf *Wheel) AddPersistJob(job Job, interval ...time.Duration) *Element {
+	return sf.AddJob(job, Persist, interval...)
 }
 
+// AddJobFunc 添加任务函数
 func (sf *Wheel) AddJobFunc(f JobFunc, num uint32, interval time.Duration) *Element {
 	return sf.AddJob(f, num, interval)
 }
 
+// AddOneShotJobFunc 添加一次性任务函数
 func (sf *Wheel) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Element {
 	return sf.AddJob(f, OneShot, interval)
 }
 
+// AddPersistJobFunc 添加周期性函数
 func (sf *Wheel) AddPersistJobFunc(f JobFunc, interval time.Duration) *Element {
 	return sf.AddJob(f, Persist, interval)
+}
+
+// Start 启动或重始启动e的计时
+func (sf *Wheel) Start(e *Element) *Wheel {
+	sf.rw.Lock()
+	(*list.Element)(e).RemoveSelf() // should remove from old list
+	entry := e.entry()
+	entry.count = 0
+	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
+	sf.addTimer(e)
+	sf.rw.Unlock()
+	return sf
 }
 
 func (sf *Wheel) Delete(e *Element) *Wheel {
@@ -138,14 +196,9 @@ func (sf *Wheel) Delete(e *Element) *Wheel {
 	return sf
 }
 
-func (sf *Wheel) Restart(e *Element) *Wheel {
-	sf.rw.Lock()
-	(*list.Element)(e).RemoveSelf() // should remove from old list
-	entry := e.entry()
-	entry.count = 0
-	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
-	sf.addTimer(e)
-	sf.rw.Unlock()
+// Modify 修改条目的周期时间
+func (sf *Wheel) Modify(e *Entry, interval time.Duration) *Wheel {
+	// TODO:
 	return sf
 }
 
@@ -161,7 +214,7 @@ func (sf *Wheel) runWork() {
 			sf.rw.Lock()
 			for past := uint32(nano/int64(sf.granularity)) - sf.curTick; past > 0; past-- {
 				sf.curTick++
-				index := sf.curTick & tvrMask
+				index := sf.curTick & tvRMask
 				if index == 0 {
 					sf.cascade()
 				}
@@ -193,12 +246,12 @@ func (sf *Wheel) runWork() {
 // 层叠计算每一层
 func (sf *Wheel) cascade() {
 	for level := 0; ; {
-		index := int((sf.curTick >> (tvrBits + level*tvnNum)) & tvnMask)
-		spoke := sf.spokes[tvrSize+tvnSize*level+index]
+		index := int((sf.curTick >> (tvRBits + level*tvNNum)) & tvNMask)
+		spoke := sf.spokes[tvRSize+tvNSize*level+index]
 		for spoke.Len() > 0 {
 			sf.addTimer((*Element)(spoke.PopFront()))
 		}
-		if level++; !(index == 0 && level < tvnNum) {
+		if level++; !(index == 0 && level < tvNNum) {
 			break
 		}
 	}
@@ -208,15 +261,15 @@ func (sf *Wheel) addTimer(e *Element) *Element {
 	var spokeIdx int
 
 	next := e.entry().next
-	if idx := next - sf.curTick; idx < tvrSize {
-		spokeIdx = int(next & tvrMask)
+	if idx := next - sf.curTick; idx < tvRSize {
+		spokeIdx = int(next & tvRMask)
 	} else {
 		// 计算在哪一个层级
 		level := 0
-		for idx >>= tvrBits; idx >= tvnSize && level < (tvnNum-1); level++ {
-			idx >>= tvnBits
+		for idx >>= tvRBits; idx >= tvNSize && level < (tvNNum-1); level++ {
+			idx >>= tvNBits
 		}
-		spokeIdx = tvrSize + tvnSize*level + int((next>>(tvrBits+tvnBits*level))&tvnMask)
+		spokeIdx = tvRSize + tvNSize*level + int((next>>(tvRBits+tvNBits*level))&tvNMask)
 	}
 	return (*Element)(sf.spokes[spokeIdx].PushElementBack((*list.Element)(e)))
 }

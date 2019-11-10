@@ -15,7 +15,7 @@ func TestTiming(t *testing.T) {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)
 	}
 
-	if got := tim.tick; got != tick {
+	if got := tim.granularity; got != tick {
 		t.Errorf("HasRunning() = %v, want %v", got, tick)
 	}
 
