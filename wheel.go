@@ -49,11 +49,11 @@ type Wheel struct {
 	rw           sync.RWMutex
 	stop         chan struct{}
 	running      bool
-	useGoroutine bool
+	hasGoroutine bool
 }
 
 // NewWheel new a wheel
-func NewWheel() *Wheel {
+func NewWheel(opts ...Option) *Wheel {
 	wl := &Wheel{
 		spokes:      make([]*list.List, tvRSize+tvNSize*tvNNum),
 		doNow:       list.New(),
@@ -66,7 +66,23 @@ func NewWheel() *Wheel {
 	for i := 0; i < len(wl.spokes); i++ {
 		wl.spokes[i] = list.New()
 	}
+
+	for _, opt := range opts {
+		opt(wl)
+	}
+
 	return wl
+}
+func (sf *Wheel) setInterval(interval time.Duration) {
+	sf.interval = interval
+}
+
+func (sf *Wheel) setGranularity(gra time.Duration) {
+	sf.granularity = gra
+}
+
+func (sf *Wheel) useGoroutine() {
+	sf.hasGoroutine = true
 }
 
 // Run 运行,不阻塞

@@ -4,26 +4,32 @@ import (
 	"time"
 )
 
-// Option 选项
-type Option func(*Timing)
+type apply interface {
+	setInterval(interval time.Duration)
+	setGranularity(gra time.Duration)
+	useGoroutine()
+}
 
-// WithTick override interval 时间粒子
-func WithTick(tick time.Duration) Option {
-	return func(timing *Timing) {
-		timing.granularity = tick
+// Option 选项
+type Option func(apply)
+
+// WithGranularity override interval 时间粒子
+func WithGranularity(gra time.Duration) Option {
+	return func(ap apply) {
+		ap.setGranularity(gra)
 	}
 }
 
 // WithInterval override interval 默认条目时间间隔
 func WithInterval(interval time.Duration) Option {
-	return func(timing *Timing) {
-		timing.interval = interval
+	return func(ap apply) {
+		ap.setInterval(interval)
 	}
 }
 
-// WithGoroutine override useGoroutine 回调使用goroutine执行
+// WithGoroutine override hasGoroutine 回调使用goroutine执行
 func WithGoroutine() Option {
-	return func(timing *Timing) {
-		timing.useGoroutine = true
+	return func(ap apply) {
+		ap.useGoroutine()
 	}
 }

@@ -9,7 +9,7 @@ import (
 func TestTiming(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
-	tim := New(WithInterval(interval), WithTick(tick), WithGoroutine())
+	tim := New(WithInterval(interval), WithGranularity(tick), WithGoroutine())
 	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
 	if got := tim.interval; got != interval {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)
@@ -36,7 +36,7 @@ type emptyJob struct{}
 func (emptyJob) Run() {}
 
 func TestJob(t *testing.T) {
-	tim := New(WithInterval(time.Second), WithTick(time.Minute)).Run()
+	tim := New(WithInterval(time.Second), WithGranularity(time.Minute)).Run()
 	e1 := tim.AddPersistJobFunc(func() {})
 	tim.AddJobFunc(func() {}, Persist)
 	tim.AddPersistJob(&emptyJob{}, time.Second*30)

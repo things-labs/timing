@@ -41,7 +41,7 @@ type Timing struct {
 	mu           sync.Mutex
 	stop         chan struct{}
 	running      bool
-	useGoroutine bool
+	hasGoroutine bool
 }
 
 // New new a timing
@@ -56,6 +56,18 @@ func New(opt ...Option) *Timing {
 		opt(tim)
 	}
 	return tim
+}
+
+func (sf *Timing) setInterval(interval time.Duration) {
+	sf.interval = interval
+}
+
+func (sf *Timing) setGranularity(gra time.Duration) {
+	sf.granularity = gra
+}
+
+func (sf *Timing) useGoroutine() {
+	sf.hasGoroutine = true
 }
 
 // Run 运行,不阻塞
@@ -202,7 +214,7 @@ func (sf *Timing) runWork() {
 			}
 			sf.mu.Unlock()
 			for _, v := range job {
-				if sf.useGoroutine {
+				if sf.hasGoroutine {
 					go v.job.Run()
 				} else {
 					wrapJob(v.job)
