@@ -162,22 +162,31 @@ func (sf *Hashes) AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer 
 	return sf.AddJob(f, Persist, interval...)
 }
 
+func (sf *Hashes) start(e *Entry) {
+	e.count = 0
+	e.next = time.Now().Add(e.interval)
+	sf.entries[e] = struct{}{}
+}
+
 // Start 启动或重始启动e的计时
-func (sf *Hashes) Start(e Timer) Base {
-	if e == nil {
+func (sf *Hashes) Start(tm Timer) Base {
+	if tm == nil {
 		return sf
 	}
-	entry := e.(*Entry)
+
 	sf.mu.Lock()
-	entry.count = 0
-	entry.next = time.Now().Add(entry.interval)
-	sf.entries[entry] = struct{}{}
+	sf.start(tm.(*Entry))
 	sf.mu.Unlock()
+
 	return sf
 }
 
 // Delete 删除指定条目
 func (sf *Hashes) Delete(e Timer) Base {
+	if e == nil {
+		return sf
+	}
+
 	sf.mu.Lock()
 	delete(sf.entries, e.(*Entry))
 	sf.mu.Unlock()
@@ -185,12 +194,14 @@ func (sf *Hashes) Delete(e Timer) Base {
 }
 
 // Modify 修改条目的周期时间
-func (sf *Hashes) Modify(e Timer, interval time.Duration) Base {
-	if e == nil {
+func (sf *Hashes) Modify(tm Timer, interval time.Duration) Base {
+	if tm == nil {
 		return sf
 	}
 	sf.mu.Lock()
-	e.(*Entry).interval = interval
+	e := tm.(*Entry)
+	e.interval = interval
+	sf.start(e)
 	sf.mu.Unlock()
 
 	return sf
@@ -222,7 +233,6 @@ func (sf *Hashes) runWork() {
 				} else {
 					wrapJob(v.job)
 				}
-
 			}
 
 		case <-sf.stop:

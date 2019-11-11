@@ -183,15 +183,22 @@ func (sf *Wheel) AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer {
 	return sf.AddJob(f, Persist, interval...)
 }
 
-// Start 启动或重始启动e的计时
-func (sf *Wheel) Start(tm Timer) Base {
-	sf.rw.Lock()
-	e := tm.(*list.Element)
+func (sf *Wheel) start(e *list.Element) {
 	e.RemoveSelf() // should remove from old list
 	entry := entry(e)
 	entry.count = 0
 	entry.next = time.Now().Add(entry.interval)
 	sf.addTimer(e)
+}
+
+// Start 启动或重始启动e的计时
+func (sf *Wheel) Start(tm Timer) Base {
+	if tm == nil {
+		return sf
+	}
+
+	sf.rw.Lock()
+	sf.start(tm.(*list.Element))
 	sf.rw.Unlock()
 
 	return sf
@@ -199,22 +206,27 @@ func (sf *Wheel) Start(tm Timer) Base {
 
 // Delete 删除条目
 func (sf *Wheel) Delete(tm Timer) Base {
+	if tm == nil {
+		return sf
+	}
+
 	sf.rw.Lock()
 	tm.(*list.Element).RemoveSelf()
 	sf.rw.Unlock()
+
 	return sf
 }
 
 // Modify 修改条目的周期时间,重置计数且重新启动定时器
 func (sf *Wheel) Modify(tm Timer, interval time.Duration) Base {
+	if tm == nil {
+		return sf
+	}
+
 	sf.rw.Lock()
 	e := tm.(*list.Element)
-	e.RemoveSelf()
-	entry := entry(e)
-	entry.interval = interval
-	entry.count = 0
-	entry.next = time.Now().Add(entry.interval)
-	sf.addTimer(e)
+	entry(e).interval = interval
+	sf.start(e)
 	sf.rw.Unlock()
 
 	return sf
@@ -247,7 +259,11 @@ func (sf *Wheel) runWork() {
 					sf.addTimer(e)
 				}
 				sf.rw.Unlock()
-				entry.job.Run()
+				if sf.hasGoroutine {
+					go entry.job.Run()
+				} else {
+					wrapJob(entry.job)
+				}
 				sf.rw.Lock()
 			}
 			sf.rw.Unlock()

@@ -71,7 +71,7 @@ func (sf testJob) Run() {
 	fmt.Println("job")
 }
 
-func ExampleNew() {
+func ExampleNewHashes() {
 	tim := NewHashes().Run()
 
 	tim.AddOneShotJobFunc(func() {
@@ -85,7 +85,7 @@ func ExampleNew() {
 	tim.AddOneShotJobFunc(func() {
 		panic("painc happen")
 	}, time.Millisecond*100)
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 	// Output:
 	// 1
 	// 2
