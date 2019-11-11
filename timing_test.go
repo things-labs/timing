@@ -6,7 +6,17 @@ import (
 	"time"
 )
 
-func TestTiming(t *testing.T) {
+type emptyJob struct{}
+
+func (emptyJob) Run() {}
+
+type testJob struct{}
+
+func (sf testJob) Run() {
+	fmt.Println("job")
+}
+
+func TestHashes(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
 	tim := NewHashes(WithInterval(interval), WithGranularity(tick), WithGoroutine())
@@ -31,14 +41,10 @@ func TestTiming(t *testing.T) {
 	}
 }
 
-type emptyJob struct{}
-
-func (emptyJob) Run() {}
-
-func TestJob(t *testing.T) {
+func TestHashesJob(t *testing.T) {
 	tim := NewHashes(WithInterval(time.Second), WithGranularity(time.Minute)).Run()
 	e1 := tim.AddPersistJobFunc(func() {})
-	tim.AddJobFunc(func() {}, Persist)
+	tim.Start(tim.NewJobFunc(func() {}, Persist))
 	tim.AddPersistJob(&emptyJob{}, time.Second*30)
 	tim.AddJob(&emptyJob{}, Persist)
 	if got := tim.Len(); got != 4 {
@@ -62,13 +68,7 @@ func TestJob(t *testing.T) {
 
 	tim.Start(nil)
 	tim.Modify(nil, time.Second)
-
-}
-
-type testJob struct{}
-
-func (sf testJob) Run() {
-	fmt.Println("job")
+	tim.Delete(nil)
 }
 
 func ExampleNewHashes() {
