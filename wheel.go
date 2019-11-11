@@ -1,6 +1,7 @@
 package timing
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -18,25 +19,12 @@ const (
 	tvNMask = tvNSize - 1  // 层级掩码
 )
 
-type internalEntry struct {
-	// 下一个超时
-	next uint32
-	// 任务已经执行的次数
-	count uint32
-	//任务需要执行的次数
-	number uint32
-	// 间隔
-	interval time.Duration
-	// 任务
-	job Job
-}
-
 // Element 定时器元素
 type Element list.Element
 
 // 内部使用,条目
-func (sf *Element) entry() *internalEntry {
-	return sf.Value.(*internalEntry)
+func (sf *Element) entry() *Entry {
+	return sf.Value.(*Entry)
 }
 
 // Wheel 时间轮实现
@@ -44,6 +32,7 @@ type Wheel struct {
 	spokes       []*list.List // 轮的槽
 	doNow        *list.List
 	curTick      uint32
+	startTime    time.Time
 	granularity  time.Duration
 	interval     time.Duration
 	rw           sync.RWMutex
@@ -57,12 +46,13 @@ func NewWheel(opts ...Option) *Wheel {
 	wl := &Wheel{
 		spokes:      make([]*list.List, tvRSize+tvNSize*tvNNum),
 		doNow:       list.New(),
+		startTime:   time.Now(),
 		granularity: DefaultGranularity,
 		interval:    DefaultInterval,
 		stop:        make(chan struct{}),
 	}
 
-	wl.curTick = uint32(time.Now().UnixNano() / int64(wl.granularity))
+	wl.curTick = math.MaxUint32 - 30
 	for i := 0; i < len(wl.spokes); i++ {
 		wl.spokes[i] = list.New()
 	}
@@ -129,13 +119,8 @@ func (sf *Wheel) Len() int {
 	return length
 }
 
-func (sf *Wheel) nextTimeout(nowNano int64, interval time.Duration) uint32 {
-	//tickCnt := (interval + sf.granularity - 1) / sf.granularity
-	//if tickCnt > math.MaxUint32 {
-	//	return math.MaxUint32
-	//}
-
-	return uint32((time.Duration(nowNano) + interval + sf.granularity - 1) / sf.granularity)
+func (sf *Wheel) nextTick(next time.Time) uint32 {
+	return uint32((next.Sub(sf.startTime) + sf.granularity - 1) / sf.granularity)
 }
 
 // NewJob 新建一个条目,条目未启动定时
@@ -146,7 +131,7 @@ func (sf *Wheel) NewJob(job Job, num uint32, interval ...time.Duration) *Element
 	}
 
 	return &Element{
-		Value: &internalEntry{
+		Value: &Entry{
 			number:   num,
 			interval: val,
 			job:      job,
@@ -163,11 +148,12 @@ func (sf *Wheel) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) *E
 func (sf *Wheel) AddJob(job Job, num uint32, interval ...time.Duration) *Element {
 	e := sf.NewJob(job, num, interval...)
 	entry := e.entry()
-	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
+	entry.next = time.Now().Add(entry.interval)
 
 	sf.rw.Lock()
 	defer sf.rw.Unlock()
-	if entry.next == sf.curTick {
+
+	if sf.nextTick(entry.next) == sf.curTick {
 		return (*Element)(sf.doNow.PushElementBack((*list.Element)(e)))
 	}
 	return sf.addTimer(e)
@@ -204,7 +190,7 @@ func (sf *Wheel) Start(e *Element) *Wheel {
 	(*list.Element)(e).RemoveSelf() // should remove from old list
 	entry := e.entry()
 	entry.count = 0
-	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
+	entry.next = time.Now().Add(entry.interval)
 	sf.addTimer(e)
 	sf.rw.Unlock()
 
@@ -226,7 +212,7 @@ func (sf *Wheel) Modify(e *Element, interval time.Duration) *Wheel {
 	entry := e.entry()
 	entry.interval = interval
 	entry.count = 0
-	entry.next = sf.nextTimeout(time.Now().UnixNano(), interval)
+	entry.next = time.Now().Add(entry.interval)
 	sf.addTimer(e)
 	sf.rw.Unlock()
 
@@ -240,10 +226,10 @@ func (sf *Wheel) runWork() {
 	for {
 		select {
 		case now := <-tick.C:
-			nano := now.UnixNano()
-			waitMs = (time.Duration(nano) % sf.granularity)
+			nano := now.Sub(sf.startTime)
+			waitMs = (nano % sf.granularity)
 			sf.rw.Lock()
-			for past := uint32(nano/int64(sf.granularity)) - sf.curTick; past > 0; past-- {
+			for past := uint32(nano/sf.granularity) - sf.curTick; past > 0; past-- {
 				sf.curTick++
 				index := sf.curTick & tvRMask
 				if index == 0 {
@@ -258,7 +244,7 @@ func (sf *Wheel) runWork() {
 
 				entry.count++
 				if entry.number == 0 || entry.count < entry.number {
-					entry.next = sf.nextTimeout(nano, entry.interval)
+					entry.next = now.Add(entry.interval)
 					sf.addTimer(e)
 				}
 				sf.rw.Unlock()
@@ -291,7 +277,7 @@ func (sf *Wheel) cascade() {
 func (sf *Wheel) addTimer(e *Element) *Element {
 	var spokeIdx int
 
-	next := e.entry().next
+	next := sf.nextTick(e.entry().next)
 	if idx := next - sf.curTick; idx < tvRSize {
 		spokeIdx = int(next & tvRMask)
 	} else {
