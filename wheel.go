@@ -129,8 +129,13 @@ func (sf *Wheel) Len() int {
 	return length
 }
 
-func (sf *Wheel) nextTimeout(nowNano int64, timeout time.Duration) uint32 {
-	return uint32((time.Duration(nowNano) + timeout + sf.granularity - 1) / sf.granularity)
+func (sf *Wheel) nextTimeout(nowNano int64, interval time.Duration) uint32 {
+	//tickCnt := (interval + sf.granularity - 1) / sf.granularity
+	//if tickCnt > math.MaxUint32 {
+	//	return math.MaxUint32
+	//}
+
+	return uint32((time.Duration(nowNano) + interval + sf.granularity - 1) / sf.granularity)
 }
 
 // NewJob 新建一个条目,条目未启动定时
@@ -202,9 +207,11 @@ func (sf *Wheel) Start(e *Element) *Wheel {
 	entry.next = sf.nextTimeout(time.Now().UnixNano(), entry.interval)
 	sf.addTimer(e)
 	sf.rw.Unlock()
+
 	return sf
 }
 
+// Delete 删除条目
 func (sf *Wheel) Delete(e *Element) *Wheel {
 	sf.rw.Lock()
 	(*list.Element)(e).RemoveSelf()
@@ -212,9 +219,17 @@ func (sf *Wheel) Delete(e *Element) *Wheel {
 	return sf
 }
 
-// Modify 修改条目的周期时间
-func (sf *Wheel) Modify(e *Entry, interval time.Duration) *Wheel {
-	// TODO:
+// Modify 修改条目的周期时间,重置计数且重新启动定时器
+func (sf *Wheel) Modify(e *Element, interval time.Duration) *Wheel {
+	sf.rw.Lock()
+	(*list.Element)(e).RemoveSelf()
+	entry := e.entry()
+	entry.interval = interval
+	entry.count = 0
+	entry.next = sf.nextTimeout(time.Now().UnixNano(), interval)
+	sf.addTimer(e)
+	sf.rw.Unlock()
+
 	return sf
 }
 

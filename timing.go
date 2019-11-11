@@ -15,7 +15,7 @@ const (
 const (
 	// DefaultInterval 默认间隔
 	DefaultInterval = time.Second
-	// DefaultGranularity 默认精度时基
+	// DefaultGranularity 默认时基精度,意思是每xx时间一个tick
 	DefaultGranularity = time.Millisecond * 100
 )
 
