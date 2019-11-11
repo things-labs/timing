@@ -220,14 +220,12 @@ func (sf *Wheel) Modify(e *Element, interval time.Duration) *Wheel {
 }
 
 func (sf *Wheel) runWork() {
-	var waitMs time.Duration
-
 	tick := time.NewTimer(sf.granularity)
 	for {
 		select {
 		case now := <-tick.C:
 			nano := now.Sub(sf.startTime)
-			waitMs = (nano % sf.granularity)
+			tick.Reset(nano % sf.granularity)
 			sf.rw.Lock()
 			for past := uint32(nano/sf.granularity) - sf.curTick; past > 0; past-- {
 				sf.curTick++
@@ -252,7 +250,7 @@ func (sf *Wheel) runWork() {
 				sf.rw.Lock()
 			}
 			sf.rw.Unlock()
-			tick.Reset(waitMs)
+
 		case <-sf.stop:
 			tick.Stop()
 			return
