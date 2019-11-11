@@ -33,8 +33,8 @@ type Entry struct {
 	job Job
 }
 
-// Timing 定时调度,采用map实现
-type Timing struct {
+// Hashes 定时调度,采用map实现
+type Hashes struct {
 	entries      map[*Entry]struct{}
 	granularity  time.Duration // 精度
 	interval     time.Duration
@@ -44,9 +44,11 @@ type Timing struct {
 	hasGoroutine bool
 }
 
-// New new a timing
-func New(opt ...Option) *Timing {
-	tim := &Timing{
+var _ Base = (*Hashes)(nil)
+
+// NewHashes new a hashes time base
+func NewHashes(opt ...Option) Base {
+	tim := &Hashes{
 		entries:     make(map[*Entry]struct{}),
 		granularity: DefaultGranularity,
 		interval:    DefaultInterval,
@@ -58,20 +60,20 @@ func New(opt ...Option) *Timing {
 	return tim
 }
 
-func (sf *Timing) setInterval(interval time.Duration) {
+func (sf *Hashes) setInterval(interval time.Duration) {
 	sf.interval = interval
 }
 
-func (sf *Timing) setGranularity(gra time.Duration) {
+func (sf *Hashes) setGranularity(gra time.Duration) {
 	sf.granularity = gra
 }
 
-func (sf *Timing) useGoroutine() {
+func (sf *Hashes) useGoroutine() {
 	sf.hasGoroutine = true
 }
 
 // Run 运行,不阻塞
-func (sf *Timing) Run() *Timing {
+func (sf *Hashes) Run() Base {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
@@ -83,14 +85,14 @@ func (sf *Timing) Run() *Timing {
 }
 
 // HasRunning 运行状态
-func (sf *Timing) HasRunning() bool {
+func (sf *Hashes) HasRunning() bool {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.running
 }
 
 // Close 关闭定时
-func (sf *Timing) Close() error {
+func (sf *Hashes) Close() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
@@ -101,14 +103,14 @@ func (sf *Timing) Close() error {
 }
 
 // Len 条目的个数
-func (sf *Timing) Len() int {
+func (sf *Hashes) Len() int {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return len(sf.entries)
 }
 
 // NewJob 新建一个条目,条目未启动定时
-func (sf *Timing) NewJob(job Job, num uint32, interval ...time.Duration) *Entry {
+func (sf *Hashes) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
 	val := sf.interval
 	if len(interval) > 0 {
 		val = interval[0]
@@ -121,13 +123,13 @@ func (sf *Timing) NewJob(job Job, num uint32, interval ...time.Duration) *Entry 
 }
 
 // NewJobFunc 新建一个条目,条目未启动定时
-func (sf *Timing) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Entry {
+func (sf *Hashes) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer {
 	return sf.NewJob(f, num, interval...)
 }
 
 // AddJob 添加任务
-func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry {
-	entry := sf.NewJob(job, num, interval...)
+func (sf *Hashes) AddJob(job Job, num uint32, interval ...time.Duration) Timer {
+	entry := sf.NewJob(job, num, interval...).(*Entry)
 	entry.next = time.Now().Add(entry.interval)
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -136,64 +138,65 @@ func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry 
 }
 
 // AddOneShotJob 添加一次性任务
-func (sf *Timing) AddOneShotJob(job Job, interval ...time.Duration) *Entry {
+func (sf *Hashes) AddOneShotJob(job Job, interval ...time.Duration) Timer {
 	return sf.AddJob(job, OneShot, interval...)
 }
 
 // AddPersistJob 添加周期性任务
-func (sf *Timing) AddPersistJob(job Job, interval ...time.Duration) *Entry {
+func (sf *Hashes) AddPersistJob(job Job, interval ...time.Duration) Timer {
 	return sf.AddJob(job, Persist, interval...)
 }
 
 // AddJobFunc 添加任务函数
-func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Entry {
+func (sf *Hashes) AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer {
 	return sf.AddJob(f, num, interval...)
 }
 
 // AddOneShotJobFunc 添加一次性任务函数
-func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+func (sf *Hashes) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) Timer {
 	return sf.AddJob(f, OneShot, interval...)
 }
 
 // AddPersistJobFunc 添加周期性函数
-func (sf *Timing) AddPersistJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+func (sf *Hashes) AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer {
 	return sf.AddJob(f, Persist, interval...)
 }
 
 // Start 启动或重始启动e的计时
-func (sf *Timing) Start(e *Entry) *Timing {
+func (sf *Hashes) Start(e Timer) Base {
 	if e == nil {
 		return sf
 	}
+	entry := e.(*Entry)
 	sf.mu.Lock()
-	e.count = 0
-	e.next = time.Now().Add(e.interval)
-	sf.entries[e] = struct{}{}
+	entry.count = 0
+	entry.next = time.Now().Add(entry.interval)
+	sf.entries[entry] = struct{}{}
 	sf.mu.Unlock()
 	return sf
 }
 
 // Delete 删除指定条目
-func (sf *Timing) Delete(e *Entry) *Timing {
+func (sf *Hashes) Delete(e Timer) Base {
 	sf.mu.Lock()
-	delete(sf.entries, e)
+	delete(sf.entries, e.(*Entry))
 	sf.mu.Unlock()
 	return sf
 }
 
 // Modify 修改条目的周期时间
-func (sf *Timing) Modify(e *Entry, interval time.Duration) *Timing {
+func (sf *Hashes) Modify(e Timer, interval time.Duration) Base {
 	if e == nil {
 		return sf
 	}
 	sf.mu.Lock()
-	e.interval = interval
+	e.(*Entry).interval = interval
 	sf.mu.Unlock()
 
 	return sf
 }
 
-func (sf *Timing) runWork() {
+func (sf *Hashes) runWork() {
 	ticker := time.NewTicker(sf.granularity)
 	for {
 		select {

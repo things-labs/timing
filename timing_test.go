@@ -9,13 +9,13 @@ import (
 func TestTiming(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
-	tim := New(WithInterval(interval), WithGranularity(tick), WithGoroutine())
+	tim := NewHashes(WithInterval(interval), WithGranularity(tick), WithGoroutine())
 	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
-	if got := tim.interval; got != interval {
+	if got := tim.(*Hashes).interval; got != interval {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)
 	}
 
-	if got := tim.granularity; got != tick {
+	if got := tim.(*Hashes).granularity; got != tick {
 		t.Errorf("HasRunning() = %v, want %v", got, tick)
 	}
 
@@ -36,7 +36,7 @@ type emptyJob struct{}
 func (emptyJob) Run() {}
 
 func TestJob(t *testing.T) {
-	tim := New(WithInterval(time.Second), WithGranularity(time.Minute)).Run()
+	tim := NewHashes(WithInterval(time.Second), WithGranularity(time.Minute)).Run()
 	e1 := tim.AddPersistJobFunc(func() {})
 	tim.AddJobFunc(func() {}, Persist)
 	tim.AddPersistJob(&emptyJob{}, time.Second*30)
@@ -46,9 +46,9 @@ func TestJob(t *testing.T) {
 	}
 	tim.Modify(e1, time.Second*2)
 
-	tim.mu.Lock()
-	interval := e1.interval
-	tim.mu.Unlock()
+	tim.(*Hashes).mu.Lock()
+	interval := e1.(*Entry).interval
+	tim.(*Hashes).mu.Unlock()
 	if interval != time.Second*2 {
 		t.Errorf("HasRunning() = %v, want %v", interval, time.Second*2)
 	}
@@ -71,8 +71,8 @@ func (sf testJob) Run() {
 	fmt.Println("job")
 }
 
-func ExampleTiming_AddJob() {
-	tim := New().Run()
+func ExampleNew() {
+	tim := NewHashes().Run()
 
 	tim.AddOneShotJobFunc(func() {
 		fmt.Println("1")
