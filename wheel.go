@@ -71,6 +71,7 @@ func (sf *Wheel) setGranularity(gra time.Duration) {
 	sf.granularity = gra
 }
 
+// UseGoroutine use goroutine or callback
 func (sf *Wheel) UseGoroutine(use bool) {
 	if use {
 		atomic.StoreUint32(&sf.hasGoroutine, 1)

@@ -5,6 +5,19 @@ import (
 	"time"
 )
 
+// num 定义
+const (
+	OneShot = 1
+	Persist = 0
+)
+
+const (
+	// DefaultInterval 默认间隔
+	DefaultInterval = time.Second
+	// DefaultGranularity 默认时基精度,意思是每xx时间一个tick
+	DefaultGranularity = time.Millisecond * 1
+)
+
 // Timer 定时器对象
 type Timer interface{}
 

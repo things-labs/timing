@@ -7,19 +7,6 @@ import (
 	"time"
 )
 
-// num 定义
-const (
-	OneShot = 1
-	Persist = 0
-)
-
-const (
-	// DefaultInterval 默认间隔
-	DefaultInterval = time.Second
-	// DefaultGranularity 默认时基精度,意思是每xx时间一个tick
-	DefaultGranularity = time.Millisecond * 100
-)
-
 // Entry 条目
 type Entry struct {
 	// next 下一次运行时间  0: 表示未运行,或未启动
@@ -69,6 +56,7 @@ func (sf *Hashes) setGranularity(gra time.Duration) {
 	sf.granularity = gra
 }
 
+// UseGoroutine use goroutine or callback
 func (sf *Hashes) UseGoroutine(use bool) {
 	if use {
 		atomic.StoreUint32(&sf.hasGoroutine, 1)
