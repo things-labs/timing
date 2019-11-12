@@ -5,7 +5,6 @@
 ![Action Status](https://github.com/thinkgos/timing/workflows/Go/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thinkgos/timing)](https://goreportcard.com/report/github.com/thinkgos/timing)
 [![Licence](https://img.shields.io/github/license/thinkgos/timing)](https://raw.githubusercontent.com/thinkgos/timing/master/LICENSE)  
-## 只支持go > 1.13, 1.13之前不支持int型位移
  - 实现hash时间定时器,时间轮定时器
  - 实现简单时间调度,任务处理
  - 任务默认在回调中处理,任务频繁却又不耗时. 可以配置使用goroutine处理
