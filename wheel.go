@@ -289,7 +289,7 @@ func (sf *Wheel) runWork() {
 // 层叠计算每一层
 func (sf *Wheel) cascade() {
 	for level := 0; ; {
-		index := int((sf.curTick >> (tvRBits + level*tvNNum)) & tvNMask)
+		index := int((sf.curTick >> (uint32)(tvRBits+level*tvNNum)) & tvNMask)
 		spoke := sf.spokes[tvRSize+tvNSize*level+index]
 		for spoke.Len() > 0 {
 			sf.addTimer(spoke.PopFront())
@@ -312,7 +312,7 @@ func (sf *Wheel) addTimer(e *list.Element) *list.Element {
 		for idx >>= tvRBits; idx >= tvNSize && level < (tvNNum-1); level++ {
 			idx >>= tvNBits
 		}
-		spokeIdx = tvRSize + tvNSize*level + int((next>>(tvRBits+tvNBits*level))&tvNMask)
+		spokeIdx = tvRSize + tvNSize*level + int((next>>(uint32)(tvRBits+tvNBits*level))&tvNMask)
 	}
 	return sf.spokes[spokeIdx].PushElementBack(e)
 }
