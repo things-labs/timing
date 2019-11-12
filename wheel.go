@@ -3,6 +3,7 @@ package timing
 import (
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/thinkgos/list"
@@ -35,7 +36,7 @@ type Wheel struct {
 	rw           sync.RWMutex
 	stop         chan struct{}
 	running      bool
-	hasGoroutine bool
+	hasGoroutine uint32
 }
 
 var _ Base = (*Wheel)(nil)
@@ -70,8 +71,12 @@ func (sf *Wheel) setGranularity(gra time.Duration) {
 	sf.granularity = gra
 }
 
-func (sf *Wheel) useGoroutine() {
-	sf.hasGoroutine = true
+func (sf *Wheel) UseGoroutine(use bool) {
+	if use {
+		atomic.StoreUint32(&sf.hasGoroutine, 1)
+	} else {
+		atomic.StoreUint32(&sf.hasGoroutine, 0)
+	}
 }
 
 // Run 运行,不阻塞
@@ -259,7 +264,7 @@ func (sf *Wheel) runWork() {
 					sf.addTimer(e)
 				}
 				sf.rw.Unlock()
-				if sf.hasGoroutine {
+				if atomic.LoadUint32(&sf.hasGoroutine) == 1 {
 					go entry.job.Run()
 				} else {
 					wrapJob(entry.job)

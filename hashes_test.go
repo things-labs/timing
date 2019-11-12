@@ -19,7 +19,7 @@ func (sf testJob) Run() {
 func TestHashes(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
-	tim := NewHashes(WithInterval(interval), WithGranularity(tick), WithGoroutine())
+	tim := NewHashes(WithInterval(interval), WithGranularity(tick), WithGoroutine(false))
 	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
 	if got := tim.(*Hashes).interval; got != interval {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)

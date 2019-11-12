@@ -7,7 +7,7 @@ import (
 type apply interface {
 	setInterval(interval time.Duration)
 	setGranularity(gra time.Duration)
-	useGoroutine()
+	UseGoroutine(use bool)
 }
 
 // Option 选项
@@ -28,8 +28,8 @@ func WithInterval(interval time.Duration) Option {
 }
 
 // WithGoroutine override hasGoroutine 回调使用goroutine执行
-func WithGoroutine() Option {
+func WithGoroutine(use bool) Option {
 	return func(ap apply) {
-		ap.useGoroutine()
+		ap.UseGoroutine(use)
 	}
 }

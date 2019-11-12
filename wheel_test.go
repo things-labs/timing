@@ -11,7 +11,7 @@ import (
 func TestWheel(t *testing.T) {
 	tick := time.Millisecond * 100
 	interval := time.Second * 10
-	tim := NewWheel(WithInterval(interval), WithGranularity(tick), WithGoroutine())
+	tim := NewWheel(WithInterval(interval), WithGranularity(tick), WithGoroutine(true))
 	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
 	if got := tim.(*Wheel).interval; got != interval {
 		t.Errorf("HasRunning() = %v, want %v", got, interval)
