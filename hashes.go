@@ -155,20 +155,25 @@ func (sf *Hashes) AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer 
 	return sf.AddJob(f, Persist, interval...)
 }
 
-func (sf *Hashes) start(e *Entry) {
+func (sf *Hashes) start(e *Entry, newTimeout ...time.Duration) {
 	e.count = 0
-	e.next = time.Now().Add(e.interval)
+	if len(newTimeout) > 0 {
+		e.next = time.Now().Add(newTimeout[0])
+	} else {
+		e.next = time.Now().Add(e.interval)
+	}
+
 	sf.entries[e] = struct{}{}
 }
 
-// Start 启动或重始启动e的计时
-func (sf *Hashes) Start(tm Timer) Base {
+// Start 启动或重始启动e的计时,可以给新的超时时间,否则使用interval时间
+func (sf *Hashes) Start(tm Timer, newTimeout ...time.Duration) Base {
 	if tm == nil {
 		return sf
 	}
 
 	sf.mu.Lock()
-	sf.start(tm.(*Entry))
+	sf.start(tm.(*Entry), newTimeout...)
 	sf.mu.Unlock()
 
 	return sf

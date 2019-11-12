@@ -75,9 +75,9 @@ func AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer {
 }
 
 // Start 启动或重始启动e的计时
-func Start(e Timer) Base {
+func Start(e Timer, newTimeout ...time.Duration) Base {
 	lazyInit()
-	return defaultTiming.Start(e)
+	return defaultTiming.Start(e, newTimeout...)
 }
 
 // Delete 删除条目

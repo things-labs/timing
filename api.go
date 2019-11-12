@@ -35,7 +35,7 @@ type Base interface {
 	AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer
 	AddOneShotJobFunc(f JobFunc, interval ...time.Duration) Timer
 	AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer
-	Start(e Timer) Base
+	Start(e Timer, newTimeout ...time.Duration) Base
 	Delete(e Timer) Base
 	Modify(e Timer, interval time.Duration) Base
 	io.Closer

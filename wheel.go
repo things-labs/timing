@@ -189,22 +189,27 @@ func (sf *Wheel) AddPersistJobFunc(f JobFunc, interval ...time.Duration) Timer {
 	return sf.AddJob(f, Persist, interval...)
 }
 
-func (sf *Wheel) start(e *list.Element) {
+func (sf *Wheel) start(e *list.Element, newTimeout ...time.Duration) {
 	e.RemoveSelf() // should remove from old list
 	entry := entry(e)
 	entry.count = 0
-	entry.next = time.Now().Add(entry.interval)
+	if len(newTimeout) > 0 {
+		entry.next = time.Now().Add(newTimeout[0])
+	} else {
+		entry.next = time.Now().Add(entry.interval)
+	}
+
 	sf.addTimer(e)
 }
 
 // Start 启动或重始启动e的计时
-func (sf *Wheel) Start(tm Timer) Base {
+func (sf *Wheel) Start(tm Timer, newTimeout ...time.Duration) Base {
 	if tm == nil {
 		return sf
 	}
 
 	sf.rw.Lock()
-	sf.start(tm.(*list.Element))
+	sf.start(tm.(*list.Element), newTimeout...)
 	sf.rw.Unlock()
 
 	return sf
