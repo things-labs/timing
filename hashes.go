@@ -213,15 +213,14 @@ func (sf *Hashes) runWork() {
 			var job []*Entry
 			sf.mu.Lock()
 			for e := range sf.entries {
-				if e.next.After(now) || e.next.IsZero() {
-					continue
-				}
-				job = append(job, e)
-				e.count++
-				if e.number == 0 || e.count < e.number {
-					e.next = now.Add(e.interval)
-				} else {
-					delete(sf.entries, e)
+				if !(e.next.After(now) || e.next.IsZero()) {
+					job = append(job, e)
+					e.count++
+					if e.number == 0 || e.count < e.number {
+						e.next = now.Add(e.interval)
+					} else {
+						delete(sf.entries, e)
+					}
 				}
 			}
 			sf.mu.Unlock()
