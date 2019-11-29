@@ -28,7 +28,7 @@ type Hashes struct {
 	interval     time.Duration
 	mu           sync.Mutex
 	stop         chan struct{}
-	running      bool
+	running      uint32
 	hasGoroutine uint32
 }
 
@@ -67,30 +67,22 @@ func (sf *Hashes) UseGoroutine(use bool) {
 
 // Run 运行,不阻塞
 func (sf *Hashes) Run() Base {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
-		return sf
+	if atomic.CompareAndSwapUint32(&sf.running, 0, 1) {
+		go sf.runWork()
 	}
-	sf.running = true
-	go sf.runWork()
+
 	return sf
 }
 
 // HasRunning 运行状态
 func (sf *Hashes) HasRunning() bool {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.running
+	return atomic.LoadUint32(&sf.running) == 1
 }
 
 // Close 关闭定时
 func (sf *Hashes) Close() error {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
+	if atomic.CompareAndSwapUint32(&sf.running, 1, 0) {
 		sf.stop <- struct{}{}
-		sf.running = false
 	}
 	return nil
 }

@@ -35,7 +35,7 @@ type Wheel struct {
 	interval     time.Duration
 	rw           sync.RWMutex
 	stop         chan struct{}
-	running      bool
+	running      uint32
 	hasGoroutine uint32
 }
 
@@ -82,31 +82,22 @@ func (sf *Wheel) UseGoroutine(use bool) {
 
 // Run 运行,不阻塞
 func (sf *Wheel) Run() Base {
-	sf.rw.Lock()
-	defer sf.rw.Unlock()
-
-	if sf.running {
-		return sf
+	if atomic.CompareAndSwapUint32(&sf.running, 0, 1) {
+		go sf.runWork()
 	}
-	sf.running = true
-	go sf.runWork()
+
 	return sf
 }
 
 // HasRunning 运行状态
 func (sf *Wheel) HasRunning() bool {
-	sf.rw.RLock()
-	defer sf.rw.RUnlock()
-	return sf.running
+	return atomic.LoadUint32(&sf.running) == 1
 }
 
-// Close close
+// Close close wait util close
 func (sf *Wheel) Close() error {
-	sf.rw.Lock()
-	defer sf.rw.Unlock()
-	if sf.running {
+	if atomic.CompareAndSwapUint32(&sf.running, 1, 0) {
 		sf.stop <- struct{}{}
-		sf.running = false
 	}
 	return nil
 }
