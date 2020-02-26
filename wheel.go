@@ -119,8 +119,8 @@ func (sf *Wheel) nextTick(next time.Time) uint32 {
 	return uint32((next.Sub(sf.startTime) + sf.granularity - 1) / sf.granularity)
 }
 
-// NewJob 新建一个条目,条目未启动定时
-func (sf *Wheel) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
+// NewTimer new a timer which mount a empty job, 条目未启动
+func (sf *Wheel) NewTimer(num uint32, interval ...time.Duration) Timer {
 	val := sf.interval
 	if len(interval) > 0 {
 		val = interval[0]
@@ -130,14 +130,30 @@ func (sf *Wheel) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
 		Value: &Entry{
 			number:   num,
 			interval: val,
-			job:      job,
+			job:      JobFunc(func() {}),
 		},
 	}
 }
 
+// MountJobOnTimer mount a job on timer
+func (sf *Wheel) MountJobOnTimer(tm Timer, job Job) Timer {
+	entry(tm.(*list.Element)).job = job
+	return tm
+}
+
+// MountJobOnTimer mount a job function on timer
+func (sf *Wheel) MountJobFuncOnTimer(tm Timer, f JobFunc) Timer {
+	return sf.MountJobOnTimer(tm, f)
+}
+
+// NewJob 新建一个条目,条目未启动定时
+func (sf *Wheel) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
+	return sf.MountJobOnTimer(sf.NewTimer(num, interval...), job)
+}
+
 // NewJobFunc 新建一个条目,条目未启动定时
 func (sf *Wheel) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer {
-	return sf.NewJob(f, num, interval...)
+	return sf.MountJobFuncOnTimer(sf.NewTimer(num, interval...), f)
 }
 
 // AddJob 添加任务

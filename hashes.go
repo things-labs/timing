@@ -94,8 +94,8 @@ func (sf *Hashes) Len() int {
 	return len(sf.entries)
 }
 
-// NewJob 新建一个条目,条目未启动定时
-func (sf *Hashes) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
+// NewTimer new a timer which mount a empty job, 条目未启动
+func (sf *Hashes) NewTimer(num uint32, interval ...time.Duration) Timer {
 	val := sf.interval
 	if len(interval) > 0 {
 		val = interval[0]
@@ -103,13 +103,29 @@ func (sf *Hashes) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
 	return &Entry{
 		number:   num,
 		interval: val,
-		job:      job,
+		job:      JobFunc(func() {}),
 	}
+}
+
+// MountJobOnTimer mount a job on timer
+func (sf *Hashes) MountJobOnTimer(tm Timer, job Job) Timer {
+	tm.(*Entry).job = job
+	return tm
+}
+
+// MountJobOnTimer mount a job function on timer
+func (sf *Hashes) MountJobFuncOnTimer(tm Timer, f JobFunc) Timer {
+	return sf.MountJobOnTimer(tm, f)
+}
+
+// NewJob 新建一个条目,条目未启动定时
+func (sf *Hashes) NewJob(job Job, num uint32, interval ...time.Duration) Timer {
+	return sf.MountJobOnTimer(sf.NewTimer(num, interval...), job)
 }
 
 // NewJobFunc 新建一个条目,条目未启动定时
 func (sf *Hashes) NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer {
-	return sf.NewJob(f, num, interval...)
+	return sf.MountJobFuncOnTimer(sf.NewTimer(num, interval...), f)
 }
 
 // AddJob 添加任务

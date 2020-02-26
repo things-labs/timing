@@ -27,6 +27,9 @@ type Base interface {
 	HasRunning() bool
 	UseGoroutine(use bool)
 	Len() int
+	NewTimer(num uint32, interval ...time.Duration) Timer
+	MountJobOnTimer(tm Timer, job Job) Timer
+	MountJobFuncOnTimer(tm Timer, f JobFunc) Timer
 	NewJob(job Job, num uint32, interval ...time.Duration) Timer
 	NewJobFunc(f JobFunc, num uint32, interval ...time.Duration) Timer
 	AddJob(job Job, num uint32, interval ...time.Duration) Timer

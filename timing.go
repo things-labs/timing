@@ -32,10 +32,26 @@ func Len() int {
 	return defaultTiming.Len()
 }
 
+// NewTimer new a timer which mount a empty job, 条目未启动
+func NewTimer(num uint32, interval ...time.Duration) Timer {
+	lazyInit()
+	return defaultTiming.NewTimer(num, interval...)
+}
+
+// MountJobOnTimer mount a job on timer
+func MountJobOnTimer(tm Timer, job Job) Timer {
+	lazyInit()
+	return defaultTiming.MountJobOnTimer(tm, job)
+}
+
+// MountJobFuncOnTimer mount a job function on timer
+func MountJobFuncOnTimer(tm Timer, f JobFunc) Timer {
+	return MountJobOnTimer(tm, f)
+}
+
 // NewJob 新建一个条目,条目未启动定时
 func NewJob(job Job, num uint32, interval ...time.Duration) Timer {
-	lazyInit()
-	return defaultTiming.NewJob(job, num, interval...)
+	return MountJobOnTimer(NewTimer(num, interval...), job)
 }
 
 // NewJobFunc 新建一个条目,条目未启动定时
