@@ -20,11 +20,6 @@ func Location() *time.Location {
 	return defaultTimer.Location()
 }
 
-// Close the time
-func Close() error {
-	return defaultTimer.Close()
-}
-
 // HasRunning 运行状态
 func HasRunning() bool {
 	return defaultTimer.HasRunning()
