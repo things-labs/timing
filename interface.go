@@ -1,6 +1,6 @@
 package timing
 
-// Job 定时任务接口
+// job 定时任务接口
 type Job interface {
 	Run()
 }
@@ -8,15 +8,7 @@ type Job interface {
 // JobFunc job function
 type JobFunc func()
 
-// Run implement Job interface
+// Run implement job interface
 func (sf JobFunc) Run() {
 	sf()
-}
-
-func wrapJob(job Job) {
-	defer func() {
-		_ = recover()
-	}()
-
-	job.Run()
 }
