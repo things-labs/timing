@@ -5,17 +5,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/thinkgos/gpool"
 )
 
 // num define
 const (
 	OneShot = 1
 	Persist = 0
-)
-
-const (
-	// DefaultInterval default interval
-	DefaultInterval = time.Second
 )
 
 type mdEntry struct {
@@ -29,14 +26,14 @@ type Timing struct {
 	stop         chan struct{}
 	add          chan *Entry
 	remove       chan *Entry
-	mod          chan mdEntry
-	active       chan *Entry
+	active       chan mdEntry
 	snapshot     chan chan []Entry
 	running      bool
 	useGoroutine uint32
-	interval     time.Duration
 	mu           sync.Mutex
 	location     *time.Location
+	gpCfg        gpool.Config
+	gp           *gpool.Pool
 	logger
 }
 
@@ -82,20 +79,28 @@ func New(opts ...Option) *Timing {
 		entries:  make([]*Entry, 0),
 		add:      make(chan *Entry),
 		remove:   make(chan *Entry),
-		mod:      make(chan mdEntry),
-		active:   make(chan *Entry),
+		active:   make(chan mdEntry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan chan []Entry),
 		location: time.Local,
-		interval: DefaultInterval,
-		logger:   newLogger("timing: "),
+		gpCfg: gpool.Config{
+			Capacity:        gpool.DefaultCapacity,
+			SurvivalTime:    gpool.DefaultSurvivalTime,
+			MiniCleanupTime: gpool.DefaultCleanupTime,
+		},
+		logger: newLogger("timing: "),
 	}
 
 	for _, opt := range opts {
 		opt(tim)
 	}
-
+	tim.gp = gpool.New(tim.gpCfg)
 	return tim
+}
+
+// UnderGoroutinePool go under goroutine pool
+func (sf *Timing) UnderGoroutinePool() *gpool.Pool {
+	return sf.gp
 }
 
 // Location gets the time zone location
@@ -142,10 +147,10 @@ func (sf *Timing) Entries() []Entry {
 }
 
 // AddJob add a job
-func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry {
+func (sf *Timing) AddJob(job Job, num uint32, interval time.Duration) *Entry {
 	entry := &Entry{
 		number:   num,
-		interval: append(interval, sf.interval)[0],
+		interval: interval,
 		job:      job,
 	}
 
@@ -160,55 +165,47 @@ func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry 
 }
 
 // AddJobFunc add a job function
-func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Entry {
-	return sf.AddJob(f, num, interval...)
+func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval time.Duration) *Entry {
+	return sf.AddJob(f, num, interval)
 }
 
 // AddOneShotJob  add one-shot job
-func (sf *Timing) AddOneShotJob(job Job, interval ...time.Duration) *Entry {
-	return sf.AddJob(job, OneShot, interval...)
+func (sf *Timing) AddOneShotJob(job Job, interval time.Duration) *Entry {
+	return sf.AddJob(job, OneShot, interval)
 }
 
 // AddOneShotJobFunc add one-shot job function
-func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) *Entry {
-	return sf.AddJob(f, OneShot, interval...)
+func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Entry {
+	return sf.AddJob(f, OneShot, interval)
 }
 
 // AddPersistJob add persist job
-func (sf *Timing) AddPersistJob(job Job, interval ...time.Duration) *Entry {
-	return sf.AddJob(job, Persist, interval...)
+func (sf *Timing) AddPersistJob(job Job, interval time.Duration) *Entry {
+	return sf.AddJob(job, Persist, interval)
 }
 
 // AddPersistJobFunc add persist job function
-func (sf *Timing) AddPersistJobFunc(f JobFunc, interval ...time.Duration) *Entry {
-	return sf.AddJob(f, Persist, interval...)
+func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
+	return sf.AddJob(f, Persist, interval)
 }
 
 // Start start the entry
-func (sf *Timing) Start(e *Entry) {
+func (sf *Timing) Start(e *Entry, interval ...time.Duration) {
 	if e == nil {
 		return
 	}
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	if sf.running {
-		sf.active <- e
-	}
-}
 
-// Modify entry interval,if entry is not on list ,it will be add it.
-// this will start the entry
-func (sf *Timing) Modify(e *Entry, interval time.Duration) {
-	if e == nil {
-		return
-	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
+	val := append(interval, -1)[0]
 	if sf.running {
-		sf.mod <- mdEntry{e, interval}
-	} else {
-		sf.modifyEntry(e, interval)
+		sf.active <- mdEntry{e, val}
+	} else if val > 0 {
+		e.interval = val
+		if !sf.hasEntry(e) {
+			sf.entries = append(sf.entries, e)
+		}
 	}
 }
 
@@ -275,8 +272,11 @@ func (sf *Timing) run() {
 						break
 					}
 					sf.Debug("run: now - %s, next - %s, entry - %p", now, e.next, e)
-
-					go e.job.Run()
+					if atomic.LoadUint32(&sf.useGoroutine) == 1 {
+						go e.job.Run()
+					} else {
+						sf.gp.Submit(e.job)
+					}
 					e.count++
 					if e.number == 0 || e.count < e.number {
 						e.prev = e.next
@@ -293,22 +293,19 @@ func (sf *Timing) run() {
 				sf.entries = append(sf.entries, newEntry)
 				sf.Debug("added: now - %s, next - %s, entry - %p",
 					now, newEntry.next, newEntry)
-			case md := <-sf.mod:
+			case mdEntry := <-sf.active:
 				timer.Stop()
-				sf.modifyEntry(md.entry, md.interval)
-				now = Now()
-				md.entry.next = now.Add(md.interval)
-				sf.Debug("modify: now - %s, next - %s, entry - %p",
-					now, md.entry.next, md.entry)
-			case e := <-sf.active:
-				timer.Stop()
-				now = Now()
-				e.next = now.Add(e.interval)
-				if !sf.hasEntry(e) {
-					sf.entries = append(sf.entries, e)
+				entry := mdEntry.entry
+				if mdEntry.interval > 0 { // if interval < 0 only active entry
+					entry.interval = mdEntry.interval
 				}
+				if !sf.hasEntry(entry) {
+					sf.entries = append(sf.entries, entry)
+				}
+				now = Now()
+				entry.next = now.Add(entry.interval)
 				sf.Debug("actived: now - %s, next - %s, entry - %p",
-					now, e.next, e)
+					now, entry.next, entry)
 			case e := <-sf.remove:
 				timer.Stop()
 				now = Now()
@@ -337,13 +334,6 @@ func (sf *Timing) hasEntry(e *Entry) bool {
 		}
 	}
 	return false
-}
-
-func (sf *Timing) modifyEntry(e *Entry, interval time.Duration) {
-	e.interval = interval
-	if !sf.hasEntry(e) {
-		sf.entries = append(sf.entries, e)
-	}
 }
 
 func (sf *Timing) removeEntry(e *Entry) {

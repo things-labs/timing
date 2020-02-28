@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Option 选项
+// Option user's option
 type Option func(tim *Timing)
 
 // WithLocation overrides the timezone of the instance.
@@ -14,7 +14,7 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
-// WithGoroutine override useGoroutine 回调使用goroutine执行
+// WithGoroutine override useGoroutine or goroutine pool
 func WithGoroutine(use bool) Option {
 	return func(tim *Timing) {
 		tim.UseGoroutine(use)
@@ -35,8 +35,23 @@ func WithLogger() Option {
 	}
 }
 
-func WithInterval(interval time.Duration) Option {
+// WithGoroutinePoolCapacity overwrite goroutine pool capacity
+func WithGoroutinePoolCapacity(cap int) Option {
 	return func(tim *Timing) {
-		tim.interval = interval
+		tim.gpCfg.Capacity = cap
+	}
+}
+
+// WithGoroutinePoolSurvivalTime overwrite goroutine pool survival time
+func WithGoroutinePoolSurvivalTime(t time.Duration) Option {
+	return func(tim *Timing) {
+		tim.gpCfg.SurvivalTime = t
+	}
+}
+
+// WithGoroutinePoolCleanupTime overwrite goroutine pool cleanup time
+func WithGoroutinePoolCleanupTime(t time.Duration) Option {
+	return func(tim *Timing) {
+		tim.gpCfg.SurvivalTime = t
 	}
 }

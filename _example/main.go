@@ -8,11 +8,11 @@ import (
 
 func main() {
 	var tm *timing.Entry
-	t := timing.New(timing.WithGoroutine(true),
+	t := timing.New(timing.WithGoroutine(false),
 		timing.WithLogger()).Run()
 
 	tm = t.AddOneShotJob(timing.JobFunc(func() {
-		t.Modify(tm, time.Second*2)
+		t.Start(tm)
 	}), time.Second)
 
 	//go func() {
