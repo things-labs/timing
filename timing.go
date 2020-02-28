@@ -18,18 +18,25 @@ const (
 	DefaultInterval = time.Second
 )
 
+type mdEntry struct {
+	entry    *Entry
+	interval time.Duration
+}
+
+// Timing keeps track of any number of entries.
 type Timing struct {
 	entries      []*Entry
 	stop         chan struct{}
 	add          chan *Entry
 	remove       chan *Entry
+	mod          chan mdEntry
+	active       chan *Entry
 	snapshot     chan chan []Entry
 	running      bool
-	hasGoroutine uint32
+	useGoroutine uint32
 	interval     time.Duration
 	mu           sync.Mutex
 	location     *time.Location
-	wg           sync.WaitGroup
 	logger
 }
 
@@ -41,14 +48,11 @@ type Entry struct {
 	number uint32
 	// interval time interval
 	interval time.Duration
-
 	// next time the job will run, or the zero time if Timing has not been
 	// started or this entry is unsatisfiable
 	next time.Time
-
 	// prev is the last time this job was run, or the zero time if never.
 	prev time.Time
-
 	// job is the thing that want to run.
 	job Job
 }
@@ -72,11 +76,14 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].next.Before(s[j].next)
 }
 
+// New new a time with option
 func New(opts ...Option) *Timing {
 	tim := &Timing{
 		entries:  make([]*Entry, 0),
 		add:      make(chan *Entry),
 		remove:   make(chan *Entry),
+		mod:      make(chan mdEntry),
+		active:   make(chan *Entry),
 		stop:     make(chan struct{}),
 		snapshot: make(chan chan []Entry),
 		location: time.Local,
@@ -87,19 +94,31 @@ func New(opts ...Option) *Timing {
 	for _, opt := range opts {
 		opt(tim)
 	}
+
 	return tim
 }
 
+// Location gets the time zone location
 func (sf *Timing) Location() *time.Location {
 	return sf.location
 }
 
+// Close the time
+func (sf *Timing) Close() error {
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.running {
+		sf.stop <- struct{}{}
+	}
+	return nil
+}
+
 // UseGoroutine use goroutine or callback
-func (sf *Timing) UseGoroutine(use bool) {
-	if use {
-		atomic.StoreUint32(&sf.hasGoroutine, 1)
+func (sf *Timing) UseGoroutine(b bool) {
+	if b {
+		atomic.StoreUint32(&sf.useGoroutine, 1)
 	} else {
-		atomic.StoreUint32(&sf.hasGoroutine, 0)
+		atomic.StoreUint32(&sf.useGoroutine, 0)
 	}
 }
 
@@ -122,15 +141,16 @@ func (sf *Timing) Entries() []Entry {
 	return sf.entrySnapshot()
 }
 
+// AddJob add a job
 func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry {
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-
 	entry := &Entry{
 		number:   num,
 		interval: append(interval, sf.interval)[0],
 		job:      job,
 	}
+
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
 	if sf.running {
 		sf.add <- entry
 	} else {
@@ -139,7 +159,64 @@ func (sf *Timing) AddJob(job Job, num uint32, interval ...time.Duration) *Entry 
 	return entry
 }
 
+// AddJobFunc add a job function
+func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, num, interval...)
+}
+
+// AddOneShotJob  add one-shot job
+func (sf *Timing) AddOneShotJob(job Job, interval ...time.Duration) *Entry {
+	return sf.AddJob(job, OneShot, interval...)
+}
+
+// AddOneShotJobFunc add one-shot job function
+func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, OneShot, interval...)
+}
+
+// AddPersistJob add persist job
+func (sf *Timing) AddPersistJob(job Job, interval ...time.Duration) *Entry {
+	return sf.AddJob(job, Persist, interval...)
+}
+
+// AddPersistJobFunc add persist job function
+func (sf *Timing) AddPersistJobFunc(f JobFunc, interval ...time.Duration) *Entry {
+	return sf.AddJob(f, Persist, interval...)
+}
+
+// Start start the entry
+func (sf *Timing) Start(e *Entry) {
+	if e == nil {
+		return
+	}
+
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.running {
+		sf.active <- e
+	}
+}
+
+// Modify entry interval,if entry is not on list ,it will be add it.
+// this will start the entry
+func (sf *Timing) Modify(e *Entry, interval time.Duration) {
+	if e == nil {
+		return
+	}
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	if sf.running {
+		sf.mod <- mdEntry{e, interval}
+	} else {
+		sf.modifyEntry(e, interval)
+	}
+}
+
+// Remove entry form timing
 func (sf *Timing) Remove(e *Entry) {
+	if e == nil {
+		return
+	}
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
@@ -189,8 +266,6 @@ func (sf *Timing) run() {
 		for {
 			select {
 			case now = <-timer.C:
-				var job []*Entry
-				//var del []*Entry
 				now = now.In(sf.location)
 				sf.Debug("wake up: now - %s", now)
 
@@ -199,25 +274,15 @@ func (sf *Timing) run() {
 					if e.next.After(now) || e.next.IsZero() {
 						break
 					}
-					job = append(job, e)
+					sf.Debug("run: now - %s, next - %s, entry - %p", now, e.next, e)
+
+					go e.job.Run()
 					e.count++
 					if e.number == 0 || e.count < e.number {
 						e.prev = e.next
 						e.next = now.Add(e.interval)
-					}
-					//else {
-					//del = append(del, e)
-					//}
-				}
-
-				for _, v := range job {
-					sf.Debug("run: now - %s, next - %s, entry - %p",
-						now, v.next, v)
-
-					if atomic.LoadUint32(&sf.hasGoroutine) == 1 {
-						go v.job.Run()
 					} else {
-						wrapJob(v.job)
+						e.next = time.Time{} // mark it, not work until remove it
 					}
 				}
 
@@ -226,7 +291,29 @@ func (sf *Timing) run() {
 				now = Now()
 				newEntry.next = now.Add(newEntry.interval)
 				sf.entries = append(sf.entries, newEntry)
-				sf.Debug("added: now - %s, next - %s, entry - %p", now, newEntry.next, newEntry)
+				sf.Debug("added: now - %s, next - %s, entry - %p",
+					now, newEntry.next, newEntry)
+			case md := <-sf.mod:
+				timer.Stop()
+				sf.modifyEntry(md.entry, md.interval)
+				now = Now()
+				md.entry.next = now.Add(md.interval)
+				sf.Debug("modify: now - %s, next - %s, entry - %p",
+					now, md.entry.next, md.entry)
+			case e := <-sf.active:
+				timer.Stop()
+				now = Now()
+				e.next = now.Add(e.interval)
+				if !sf.hasEntry(e) {
+					sf.entries = append(sf.entries, e)
+				}
+				sf.Debug("actived: now - %s, next - %s, entry - %p",
+					now, e.next, e)
+			case e := <-sf.remove:
+				timer.Stop()
+				now = Now()
+				sf.removeEntry(e)
+				sf.Debug("removed: entry - %p", e)
 
 			case replyChan := <-sf.snapshot:
 				replyChan <- sf.entrySnapshot()
@@ -236,12 +323,6 @@ func (sf *Timing) run() {
 				timer.Stop()
 				sf.Debug("stop")
 				return
-
-			case e := <-sf.remove:
-				timer.Stop()
-				now = Now()
-				sf.removeEntry(e)
-				sf.Debug("removed: entry - %s", e)
 			}
 
 			break
@@ -249,8 +330,24 @@ func (sf *Timing) run() {
 	}
 }
 
+func (sf *Timing) hasEntry(e *Entry) bool {
+	for _, v := range sf.entries {
+		if e == v {
+			return true
+		}
+	}
+	return false
+}
+
+func (sf *Timing) modifyEntry(e *Entry, interval time.Duration) {
+	e.interval = interval
+	if !sf.hasEntry(e) {
+		sf.entries = append(sf.entries, e)
+	}
+}
+
 func (sf *Timing) removeEntry(e *Entry) {
-	var entries []*Entry
+	entries := make([]*Entry, 0, len(sf.entries))
 	for _, v := range sf.entries {
 		if e != v {
 			entries = append(entries, v)
@@ -266,12 +363,4 @@ func (sf *Timing) entrySnapshot() []Entry {
 		entries[i] = *e
 	}
 	return entries
-}
-
-func wrapJob(job Job) {
-	defer func() {
-		_ = recover()
-	}()
-
-	job.Run()
 }

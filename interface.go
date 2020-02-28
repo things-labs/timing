@@ -1,6 +1,6 @@
 package timing
 
-// job 定时任务接口
+// Job job interface
 type Job interface {
 	Run()
 }

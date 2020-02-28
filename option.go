@@ -14,7 +14,7 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
-// WithGoroutine override hasGoroutine 回调使用goroutine执行
+// WithGoroutine override useGoroutine 回调使用goroutine执行
 func WithGoroutine(use bool) Option {
 	return func(tim *Timing) {
 		tim.UseGoroutine(use)
@@ -32,5 +32,11 @@ func WithLoggerProvider(p LogProvider) Option {
 func WithLogger() Option {
 	return func(tim *Timing) {
 		tim.LogMode(true)
+	}
+}
+
+func WithInterval(interval time.Duration) Option {
+	return func(tim *Timing) {
+		tim.interval = interval
 	}
 }
