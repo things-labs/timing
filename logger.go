@@ -14,46 +14,46 @@ type LogProvider interface {
 
 // 内部调试实现
 type logger struct {
-	logger LogProvider
+	provider LogProvider
 	// is log output enabled,1: enable, 0: disable
-	hasLog uint32
+	has uint32
 }
 
-// newLogger new logger with prefix
-func newLogger(prefix string) *logger {
-	return &logger{
-		logger: defaultLogger{log.New(os.Stdout, prefix, log.LstdFlags)},
-		hasLog: 0,
+// newLogger new provider with prefix
+func newLogger(prefix string) logger {
+	return logger{
+		provider: defaultLogger{log.New(os.Stdout, prefix, log.LstdFlags)},
+		has:      0,
 	}
 }
 
 // LogMode set enable or disable log output when you has set defaultLogger
 func (sf *logger) LogMode(enable bool) {
 	if enable {
-		atomic.StoreUint32(&sf.hasLog, 1)
+		atomic.StoreUint32(&sf.has, 1)
 	} else {
-		atomic.StoreUint32(&sf.hasLog, 0)
+		atomic.StoreUint32(&sf.has, 0)
 	}
 }
 
 // SetLogProvider set defaultLogger provider
 func (sf *logger) setLogProvider(p LogProvider) {
 	if p != nil {
-		sf.logger = p
+		sf.provider = p
 	}
 }
 
 // Error Log ERROR level message.
-func (sf logger) Error(format string, v ...interface{}) {
-	if atomic.LoadUint32(&sf.hasLog) == 1 {
-		sf.logger.Error(format, v...)
+func (sf *logger) Error(format string, v ...interface{}) {
+	if atomic.LoadUint32(&sf.has) == 1 {
+		sf.provider.Error(format, v...)
 	}
 }
 
 // Debug Log DEBUG level message.
-func (sf logger) Debug(format string, v ...interface{}) {
-	if atomic.LoadUint32(&sf.hasLog) == 1 {
-		sf.logger.Debug(format, v...)
+func (sf *logger) Debug(format string, v ...interface{}) {
+	if atomic.LoadUint32(&sf.has) == 1 {
+		sf.provider.Debug(format, v...)
 	}
 }
 
