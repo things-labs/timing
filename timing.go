@@ -116,6 +116,7 @@ func (sf *Timing) Close() error {
 	defer sf.mu.Unlock()
 	if sf.running {
 		sf.stop <- struct{}{}
+		sf.running = false
 	}
 	return sf.gp.Close()
 }
