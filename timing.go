@@ -12,6 +12,11 @@ const (
 	Persist = 0
 )
 
+// DefaultJobChanSize default job chan size
+const (
+	DefaultJobChanSize = 2048
+)
+
 type mdEntry struct {
 	entry    *Entry
 	interval time.Duration
@@ -26,7 +31,8 @@ type Timing struct {
 	active       chan mdEntry
 	snapshot     chan chan []Entry
 	useGoroutine bool
-	sb           Submit
+	jobs         chan Job
+	jobsChanSize int
 	running      bool
 	mu           sync.Mutex
 	location     *time.Location
@@ -72,20 +78,21 @@ func (s byTime) Less(i, j int) bool {
 // New new a time with option
 func New(opts ...Option) *Timing {
 	tim := &Timing{
-		entries:  make([]*Entry, 0),
-		add:      make(chan *Entry, 1),
-		remove:   make(chan *Entry, 1),
-		active:   make(chan mdEntry, 1),
-		stop:     make(chan struct{}),
-		snapshot: make(chan chan []Entry, 1),
-		location: time.Local,
-		sb:       NopSubmit{},
-		logger:   newLogger("timing: "),
+		entries:      make([]*Entry, 0),
+		add:          make(chan *Entry),
+		remove:       make(chan *Entry),
+		active:       make(chan mdEntry),
+		stop:         make(chan struct{}),
+		snapshot:     make(chan chan []Entry),
+		location:     time.Local,
+		jobsChanSize: DefaultJobChanSize,
+		logger:       newLogger("timing: "),
 	}
 
 	for _, opt := range opts {
 		opt(tim)
 	}
+	tim.jobs = make(chan Job, tim.jobsChanSize)
 	return tim
 }
 
@@ -244,7 +251,7 @@ func (sf *Timing) Run() *Timing {
 }
 
 func (sf *Timing) run() {
-	sf.Debug("start")
+	sf.Debug("run start!")
 
 	Now := func() time.Time { return time.Now().In(sf.location) }
 
@@ -254,6 +261,19 @@ func (sf *Timing) run() {
 		entry.next = now.Add(entry.interval)
 		sf.Debug("next active: now - %s, next - %s", now, entry.next)
 	}
+	closed := make(chan struct{})
+	go func() {
+		sf.Debug("work start!")
+		for {
+			select {
+			case f := <-sf.jobs:
+				f.Run()
+			case <-closed:
+				sf.Debug("work stop!")
+				return
+			}
+		}
+	}()
 
 	for {
 		// Determine the next entry to run.
@@ -283,7 +303,7 @@ func (sf *Timing) run() {
 					if sf.useGoroutine {
 						go e.job.Run()
 					} else {
-						sf.sb.Submit(e.job)
+						sf.jobs <- e.job
 					}
 					e.count++
 					if e.number == 0 || e.count < e.number {
@@ -293,7 +313,6 @@ func (sf *Timing) run() {
 						e.next = time.Time{} // mark it, not work until remove it
 					}
 				}
-
 			case newEntry := <-sf.add:
 				timer.Stop()
 				now = Now()
@@ -325,8 +344,9 @@ func (sf *Timing) run() {
 				continue
 
 			case <-sf.stop:
+				closed <- struct{}{}
 				timer.Stop()
-				sf.Debug("stop")
+				sf.Debug("run stop!")
 				return
 			}
 

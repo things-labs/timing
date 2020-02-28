@@ -14,12 +14,18 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
-// WithGoroutine override useGoroutine or goroutine pool
+// WithGoroutine overwrite useGoroutine or goroutine pool
 // if not use goroutine,set it false and the set goroutine pool submit interface
-func WithGoroutine(use bool, submit ...Submit) Option {
+func WithGoroutine(use bool) Option {
 	return func(tim *Timing) {
 		tim.useGoroutine = use
-		tim.sb = append(submit, NopSubmit{})[0]
+	}
+}
+
+// WithJobChanSize overwrite job chan size,default value is DefaultJobChanSize
+func WithJobChanSize(size int) Option {
+	return func(tim *Timing) {
+		tim.jobsChanSize = size
 	}
 }
 
@@ -30,8 +36,8 @@ func WithLoggerProvider(p LogProvider) Option {
 	}
 }
 
-// WithLogger enable logger
-func WithLogger() Option {
+// WithEnableLogger enable logger
+func WithEnableLogger() Option {
 	return func(tim *Timing) {
 		tim.LogMode(true)
 	}
