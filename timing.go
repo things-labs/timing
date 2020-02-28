@@ -22,18 +22,20 @@ type mdEntry struct {
 
 // Timing keeps track of any number of entries.
 type Timing struct {
-	entries      []*Entry
-	stop         chan struct{}
-	add          chan *Entry
-	remove       chan *Entry
-	active       chan mdEntry
-	snapshot     chan chan []Entry
-	running      bool
-	useGoroutine uint32
-	mu           sync.Mutex
-	location     *time.Location
-	gpCfg        gpool.Config
-	gp           *gpool.Pool
+	entries         []*Entry
+	stop            chan struct{}
+	add             chan *Entry
+	remove          chan *Entry
+	active          chan mdEntry
+	snapshot        chan chan []Entry
+	running         bool
+	useGoroutine    uint32
+	mu              sync.Mutex
+	location        *time.Location
+	capacity        int32
+	survivalTime    time.Duration
+	miniCleanupTime time.Duration
+	gp              *gpool.Pool
 	logger
 }
 
@@ -76,25 +78,25 @@ func (s byTime) Less(i, j int) bool {
 // New new a time with option
 func New(opts ...Option) *Timing {
 	tim := &Timing{
-		entries:  make([]*Entry, 0),
-		add:      make(chan *Entry),
-		remove:   make(chan *Entry),
-		active:   make(chan mdEntry),
-		stop:     make(chan struct{}),
-		snapshot: make(chan chan []Entry),
-		location: time.Local,
-		gpCfg: gpool.Config{
-			Capacity:        gpool.DefaultCapacity,
-			SurvivalTime:    gpool.DefaultSurvivalTime,
-			MiniCleanupTime: gpool.DefaultCleanupTime,
-		},
-		logger: newLogger("timing: "),
+		entries:         make([]*Entry, 0),
+		add:             make(chan *Entry),
+		remove:          make(chan *Entry),
+		active:          make(chan mdEntry),
+		stop:            make(chan struct{}),
+		snapshot:        make(chan chan []Entry),
+		location:        time.Local,
+		capacity:        gpool.DefaultCapacity,
+		survivalTime:    gpool.DefaultSurvivalTime,
+		miniCleanupTime: gpool.DefaultCleanupTime,
+		logger:          newLogger("timing: "),
 	}
 
 	for _, opt := range opts {
 		opt(tim)
 	}
-	tim.gp = gpool.New(tim.gpCfg)
+	tim.gp = gpool.New(gpool.WithCapacity(tim.capacity),
+		gpool.WithSurvivalTime(tim.survivalTime),
+		gpool.WithMiniCleanupTime(tim.miniCleanupTime))
 	return tim
 }
 

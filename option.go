@@ -36,22 +36,22 @@ func WithLogger() Option {
 }
 
 // WithGoroutinePoolCapacity overwrite goroutine pool capacity
-func WithGoroutinePoolCapacity(cap int) Option {
+func WithGoroutinePoolCapacity(cap int32) Option {
 	return func(tim *Timing) {
-		tim.gpCfg.Capacity = cap
+		tim.capacity = cap
 	}
 }
 
 // WithGoroutinePoolSurvivalTime overwrite goroutine pool survival time
 func WithGoroutinePoolSurvivalTime(t time.Duration) Option {
 	return func(tim *Timing) {
-		tim.gpCfg.SurvivalTime = t
+		tim.survivalTime = t
 	}
 }
 
 // WithGoroutinePoolCleanupTime overwrite goroutine pool cleanup time
 func WithGoroutinePoolCleanupTime(t time.Duration) Option {
 	return func(tim *Timing) {
-		tim.gpCfg.SurvivalTime = t
+		tim.miniCleanupTime = t
 	}
 }
