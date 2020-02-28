@@ -15,9 +15,11 @@ func WithLocation(loc *time.Location) Option {
 }
 
 // WithGoroutine override useGoroutine or goroutine pool
-func WithGoroutine(use bool) Option {
+// if not use goroutine,set it false and the set goroutine pool submit interface
+func WithGoroutine(use bool, submit ...Submit) Option {
 	return func(tim *Timing) {
-		tim.UseGoroutine(use)
+		tim.useGoroutine = use
+		tim.sb = append(submit, NopSubmit{})[0]
 	}
 }
 
@@ -32,26 +34,5 @@ func WithLoggerProvider(p LogProvider) Option {
 func WithLogger() Option {
 	return func(tim *Timing) {
 		tim.LogMode(true)
-	}
-}
-
-// WithGoroutinePoolCapacity overwrite goroutine pool capacity
-func WithGoroutinePoolCapacity(cap int32) Option {
-	return func(tim *Timing) {
-		tim.capacity = cap
-	}
-}
-
-// WithGoroutinePoolSurvivalTime overwrite goroutine pool survival time
-func WithGoroutinePoolSurvivalTime(t time.Duration) Option {
-	return func(tim *Timing) {
-		tim.survivalTime = t
-	}
-}
-
-// WithGoroutinePoolCleanupTime overwrite goroutine pool cleanup time
-func WithGoroutinePoolCleanupTime(t time.Duration) Option {
-	return func(tim *Timing) {
-		tim.miniCleanupTime = t
 	}
 }

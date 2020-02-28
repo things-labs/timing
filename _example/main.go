@@ -6,15 +6,24 @@ import (
 	"github.com/thinkgos/timing"
 )
 
+type gp struct{}
+
+func (gp) Submit(job timing.Job) {
+	job.Run()
+}
+
 func main() {
+	p := gp{}
 	var tm *timing.Entry
-	t := timing.New(timing.WithGoroutine(false),
+	t := timing.New(timing.WithGoroutine(false, p),
 		timing.WithLogger()).Run()
-
-	tm = t.AddOneShotJob(timing.JobFunc(func() {
+	defer t.Close()
+	t.AddPersistJob(timing.JobFunc(func() {
+	}), time.Second*2)
+	tm = timing.NewEntry(timing.JobFunc(func() {
 		t.Start(tm)
-	}), time.Second)
-
+	}), timing.OneShot, time.Second*2)
+	t.Start(tm)
 	//go func() {
 	//	for {
 	//		time.Sleep(time.Second * 5)
@@ -23,5 +32,5 @@ func main() {
 	//
 	//}()
 	select {}
-	t.Remove(tm)
+
 }

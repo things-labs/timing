@@ -3,10 +3,7 @@ package timing
 import (
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
-
-	"github.com/thinkgos/gpool"
 )
 
 // num define
@@ -22,20 +19,17 @@ type mdEntry struct {
 
 // Timing keeps track of any number of entries.
 type Timing struct {
-	entries         []*Entry
-	stop            chan struct{}
-	add             chan *Entry
-	remove          chan *Entry
-	active          chan mdEntry
-	snapshot        chan chan []Entry
-	running         bool
-	useGoroutine    uint32
-	mu              sync.Mutex
-	location        *time.Location
-	capacity        int32
-	survivalTime    time.Duration
-	miniCleanupTime time.Duration
-	gp              *gpool.Pool
+	entries      []*Entry
+	stop         chan struct{}
+	add          chan *Entry
+	remove       chan *Entry
+	active       chan mdEntry
+	snapshot     chan chan []Entry
+	useGoroutine bool
+	sb           Submit
+	running      bool
+	mu           sync.Mutex
+	location     *time.Location
 	logger
 }
 
@@ -78,31 +72,21 @@ func (s byTime) Less(i, j int) bool {
 // New new a time with option
 func New(opts ...Option) *Timing {
 	tim := &Timing{
-		entries:         make([]*Entry, 0),
-		add:             make(chan *Entry),
-		remove:          make(chan *Entry),
-		active:          make(chan mdEntry),
-		stop:            make(chan struct{}),
-		snapshot:        make(chan chan []Entry),
-		location:        time.Local,
-		capacity:        gpool.DefaultCapacity,
-		survivalTime:    gpool.DefaultSurvivalTime,
-		miniCleanupTime: gpool.DefaultCleanupTime,
-		logger:          newLogger("timing: "),
+		entries:  make([]*Entry, 0),
+		add:      make(chan *Entry, 1),
+		remove:   make(chan *Entry, 1),
+		active:   make(chan mdEntry, 1),
+		stop:     make(chan struct{}),
+		snapshot: make(chan chan []Entry, 1),
+		location: time.Local,
+		sb:       NopSubmit{},
+		logger:   newLogger("timing: "),
 	}
 
 	for _, opt := range opts {
 		opt(tim)
 	}
-	tim.gp = gpool.New(gpool.WithCapacity(tim.capacity),
-		gpool.WithSurvivalTime(tim.survivalTime),
-		gpool.WithMiniCleanupTime(tim.miniCleanupTime))
 	return tim
-}
-
-// UnderGoroutinePool go under goroutine pool
-func (sf *Timing) UnderGoroutinePool() *gpool.Pool {
-	return sf.gp
 }
 
 // Location gets the time zone location
@@ -118,16 +102,7 @@ func (sf *Timing) Close() error {
 		sf.stop <- struct{}{}
 		sf.running = false
 	}
-	return sf.gp.Close()
-}
-
-// UseGoroutine use goroutine or callback
-func (sf *Timing) UseGoroutine(b bool) {
-	if b {
-		atomic.StoreUint32(&sf.useGoroutine, 1)
-	} else {
-		atomic.StoreUint32(&sf.useGoroutine, 0)
-	}
+	return nil
 }
 
 // HasRunning 运行状态
@@ -149,13 +124,43 @@ func (sf *Timing) Entries() []Entry {
 	return sf.entrySnapshot()
 }
 
-// AddJob add a job
-func (sf *Timing) AddJob(job Job, num uint32, interval time.Duration) *Entry {
-	entry := &Entry{
+// NewEntry new entry
+func NewEntry(job Job, num uint32, interval time.Duration) *Entry {
+	return &Entry{
 		number:   num,
 		interval: interval,
 		job:      job,
 	}
+}
+
+// NewOneShotEntry new one-shot entry
+func NewOneShotEntry(job Job, interval time.Duration) *Entry {
+	return NewEntry(job, OneShot, interval)
+}
+
+// NewPersistEntry new persist entry
+func NewPersistEntry(job Job, interval time.Duration) *Entry {
+	return NewEntry(job, Persist, interval)
+}
+
+// NewFuncEntry new function entry
+func NewFuncEntry(f JobFunc, num uint32, interval time.Duration) *Entry {
+	return NewEntry(f, num, interval)
+}
+
+// NewOneShotFuncEntry new one-shot function entry
+func NewOneShotFuncEntry(f JobFunc, interval time.Duration) *Entry {
+	return NewEntry(f, OneShot, interval)
+}
+
+// NewPersistFuncEntry new persist function entry
+func NewPersistFuncEntry(f JobFunc, interval time.Duration) *Entry {
+	return NewEntry(f, Persist, interval)
+}
+
+// AddJob add a job
+func (sf *Timing) AddJob(job Job, num uint32, interval time.Duration) *Entry {
+	entry := NewEntry(job, num, interval)
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -275,10 +280,10 @@ func (sf *Timing) run() {
 						break
 					}
 					sf.Debug("run: now - %s, next - %s, entry - %p", now, e.next, e)
-					if atomic.LoadUint32(&sf.useGoroutine) == 1 {
+					if sf.useGoroutine {
 						go e.job.Run()
 					} else {
-						sf.gp.Submit(e.job)
+						sf.sb.Submit(e.job)
 					}
 					e.count++
 					if e.number == 0 || e.count < e.number {

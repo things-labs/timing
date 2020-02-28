@@ -53,7 +53,6 @@ func TestHashesJob(t *testing.T) {
 	tim.Start(nil)
 	tim.Start(nil, time.Second)
 	tim.Remove(nil)
-	tim.UnderGoroutinePool()
 	tim.Location()
 }
 
@@ -69,6 +68,9 @@ func ExampleNew() {
 	tim.AddOneShotJob(&testJob{}, time.Millisecond*300)
 	tim.AddJob(&testJob{}, 2, time.Millisecond*400)
 	tim.AddOneShotJobFunc(func() {
+		defer func() {
+			_ = recover()
+		}()
 		panic("painc happen")
 	}, time.Millisecond*100)
 	time.Sleep(time.Second * 2)
