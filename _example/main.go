@@ -1,20 +1,18 @@
 package main
 
 import (
-	"log"
-	"math/rand"
-	"time"
+	"fmt"
 
 	"github.com/thinkgos/timing"
 )
 
 func main() {
-	var periodic timing.Timer
+	t := timing.New(timing.WithGoroutine(true),
+		timing.WithLogger()).Run()
 
-	periodic = timing.NewJobFunc(func() {
-		log.Printf("what a fuck")
-		timing.Start(periodic, time.Duration(rand.Intn(20))*time.Second+20*time.Second)
-	}, timing.OneShot, time.Second*2)
-	timing.Start(periodic)
+	t.AddJob(timing.JobFunc(func() {
+		fmt.Println("hello world")
+	}), timing.Persist)
+
 	select {}
 }
