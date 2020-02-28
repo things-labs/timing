@@ -115,7 +115,7 @@ func (sf *Timing) Close() error {
 	if sf.running {
 		sf.stop <- struct{}{}
 	}
-	return nil
+	return sf.gp.Close()
 }
 
 // UseGoroutine use goroutine or callback
@@ -190,7 +190,7 @@ func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
 }
 
 // Start start the entry
-func (sf *Timing) Start(e *Entry, interval ...time.Duration) {
+func (sf *Timing) Start(e *Entry, newInterval ...time.Duration) {
 	if e == nil {
 		return
 	}
@@ -198,7 +198,7 @@ func (sf *Timing) Start(e *Entry, interval ...time.Duration) {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 
-	val := append(interval, -1)[0]
+	val := append(newInterval, -1)[0]
 	if sf.running {
 		sf.active <- mdEntry{e, val}
 	} else if val > 0 {
