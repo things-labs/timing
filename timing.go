@@ -31,6 +31,7 @@ type Timing struct {
 	active       chan mdEntry
 	snapshot     chan chan []Entry
 	useGoroutine bool
+	pf           func(err interface{})
 	jobs         chan Job
 	jobsChanSize int
 	running      bool
@@ -49,6 +50,7 @@ func New(opts ...Option) *Timing {
 		stop:         make(chan struct{}),
 		snapshot:     make(chan chan []Entry),
 		location:     time.Local,
+		pf:           func(err interface{}) {},
 		jobsChanSize: DefaultJobChanSize,
 		logger:       newLogger("timing: "),
 	}
@@ -180,6 +182,16 @@ func (sf *Timing) Run() *Timing {
 	return sf
 }
 
+func (sf *Timing) wrapJob(job Job) {
+	defer func() {
+		if err := recover(); err != nil {
+			sf.pf(err)
+		}
+	}()
+
+	job.Run()
+}
+
 func (sf *Timing) run() {
 	sf.Debug("run start!")
 
@@ -197,7 +209,7 @@ func (sf *Timing) run() {
 		for {
 			select {
 			case f := <-sf.jobs:
-				f.Run()
+				sf.wrapJob(f)
 			case <-closed:
 				sf.Debug("work stop!")
 				return

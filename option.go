@@ -42,3 +42,12 @@ func WithEnableLogger() Option {
 		tim.LogMode(true)
 	}
 }
+
+func WithPanicHandler(f func(err interface{})) Option {
+	return func(tim *Timing) {
+		if f != nil {
+			tim.pf = f
+		}
+
+	}
+}
