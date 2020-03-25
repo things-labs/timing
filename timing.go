@@ -13,9 +13,11 @@ const (
 	Persist = 0
 )
 
-// DefaultJobChanSize default job chan size
 const (
+	// DefaultJobChanSize default job chan size
 	DefaultJobChanSize = 1024
+	// submit job must immediately,time limit timeoutLimit,
+	timeoutLimit = 500 * time.Millisecond
 )
 
 type mdEntry struct {
@@ -221,7 +223,8 @@ func (sf *Timing) run() {
 			}
 		}
 	}()
-	timeout := time.NewTimer(time.Second)
+	// if time
+	timeout := time.NewTimer(timeoutLimit)
 	defer timeout.Stop()
 	for {
 		// Determine the next entry to run.
@@ -252,7 +255,7 @@ func (sf *Timing) run() {
 					if atomic.LoadUint32(&e.useGoroutine) == 1 {
 						go e.job.Run()
 					} else {
-						timeout.Reset(time.Second)
+						timeout.Reset(timeoutLimit)
 						select {
 						case sf.jobs <- e.job:
 						case <-timeout.C:
