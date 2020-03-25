@@ -17,7 +17,7 @@ const (
 	// DefaultJobChanSize default job chan size
 	DefaultJobChanSize = 1024
 	// submit job must immediately,time limit timeoutLimit,
-	timeoutLimit = 500 * time.Millisecond
+	timeoutLimit = 200 * time.Millisecond
 )
 
 type mdEntry struct {
