@@ -3,6 +3,7 @@ package timing
 import (
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -14,7 +15,7 @@ const (
 
 // DefaultJobChanSize default job chan size
 const (
-	DefaultJobChanSize = 2048
+	DefaultJobChanSize = 1024
 )
 
 type mdEntry struct {
@@ -30,7 +31,6 @@ type Timing struct {
 	remove       chan *Entry
 	active       chan mdEntry
 	snapshot     chan chan []Entry
-	useGoroutine bool
 	pf           func(err interface{})
 	jobs         chan Job
 	jobsChanSize int
@@ -138,14 +138,19 @@ func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
 
 // Start start the entry
 func (sf *Timing) Start(e *Entry, newInterval ...time.Duration) {
+	var val = time.Duration(-1) // only active this entry
+
 	if e == nil {
 		return
+	}
+
+	if len(newInterval) > 0 {
+		val = newInterval[0]
 	}
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 
-	val := append(newInterval, -1)[0]
 	if sf.running {
 		sf.active <- mdEntry{e, val}
 	} else if val > 0 {
@@ -216,7 +221,8 @@ func (sf *Timing) run() {
 			}
 		}
 	}()
-
+	timeout := time.NewTimer(time.Second)
+	defer timeout.Stop()
 	for {
 		// Determine the next entry to run.
 		sort.Sort(byTime(sf.entries))
@@ -229,7 +235,7 @@ func (sf *Timing) run() {
 		} else {
 			timer = time.NewTimer(sf.entries[0].next.Sub(now))
 		}
-
+	loop:
 		for {
 			select {
 			case now = <-timer.C:
@@ -242,11 +248,18 @@ func (sf *Timing) run() {
 						break
 					}
 					sf.Debug("run: now - %s, next - %s, entry - %p", now, e.next, e)
-					if sf.useGoroutine {
+
+					if atomic.LoadUint32(&e.useGoroutine) == 1 {
 						go e.job.Run()
 					} else {
-						sf.jobs <- e.job
+						timeout.Reset(time.Second)
+						select {
+						case sf.jobs <- e.job:
+						case <-timeout.C:
+							break loop
+						}
 					}
+
 					e.count++
 					if e.number == 0 || e.count < e.number {
 						e.prev = e.next
@@ -291,7 +304,6 @@ func (sf *Timing) run() {
 				sf.Debug("run stop!")
 				return
 			}
-
 			break
 		}
 	}

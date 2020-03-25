@@ -9,6 +9,4 @@ type Job interface {
 type JobFunc func()
 
 // Run implement job interface
-func (sf JobFunc) Run() {
-	sf()
-}
+func (f JobFunc) Run() { f() }

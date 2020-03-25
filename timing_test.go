@@ -17,7 +17,7 @@ func (sf testJob) Run() {
 }
 
 func TestHashes(t *testing.T) {
-	tim := New(WithGoroutine(true))
+	tim := New()
 	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
 
 	tim.Run()
@@ -57,11 +57,11 @@ func TestHashesJob(t *testing.T) {
 }
 
 func ExampleNew() {
-	tim := New(WithGoroutine(true)).Run()
+	tim := New().Run()
 
 	tim.AddOneShotJobFunc(func() {
 		fmt.Println("1")
-	}, time.Millisecond*100)
+	}, time.Millisecond*100).WithGoroutine(true)
 	tim.AddJobFunc(func() {
 		fmt.Println("2")
 	}, OneShot, time.Millisecond*200)

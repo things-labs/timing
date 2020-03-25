@@ -1,12 +1,13 @@
 package timing
 
 import (
+	"sync/atomic"
 	"time"
 )
 
 // Entry consists of a schedule and the func to execute on that schedule.
 type Entry struct {
-	// // job has schedule count
+	// job has schedule count
 	count uint32
 	// job schedule number
 	number uint32
@@ -19,6 +20,8 @@ type Entry struct {
 	prev time.Time
 	// job is the thing that want to run.
 	job Job
+	// use goroutine or not do the job
+	useGoroutine uint32
 }
 
 // byTime is a wrapper for sorting the entry array by time
@@ -40,7 +43,7 @@ func (s byTime) Less(i, j int) bool {
 	return s[i].next.Before(s[j].next)
 }
 
-// NewEntry new entry
+// NewEntry new a entry with job,num and interval
 func NewEntry(job Job, num uint32, interval time.Duration) *Entry {
 	return &Entry{
 		number:   num,
@@ -72,4 +75,16 @@ func NewOneShotFuncEntry(f JobFunc, interval time.Duration) *Entry {
 // NewPersistFuncEntry new persist function entry
 func NewPersistFuncEntry(f JobFunc, interval time.Duration) *Entry {
 	return NewEntry(f, Persist, interval)
+}
+
+// WithGoroutine the entry will use goroutine to do the job
+// if not use goroutine which set it false,it will done on one goroutine
+// default not use goroutine
+func (sf *Entry) WithGoroutine(enable bool) *Entry {
+	if enable {
+		atomic.StoreUint32(&sf.useGoroutine, 1)
+	} else {
+		atomic.StoreUint32(&sf.useGoroutine, 0)
+	}
+	return sf
 }
