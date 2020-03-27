@@ -1,8 +1,21 @@
 package timing
 
 import (
+	"sync/atomic"
 	"time"
 )
+
+// EntryOption entry option
+type EntryOption func(e *Entry)
+
+// WithGoroutine the entry will use goroutine to do the job
+// if not use goroutine which set it false,it will done on one goroutine
+// default not use goroutine
+func WithGoroutine() EntryOption {
+	return func(e *Entry) {
+		atomic.StoreUint32(&e.useGoroutine, 1)
+	}
+}
 
 // Option user's option
 type Option func(tim *Timing)
@@ -48,7 +61,7 @@ func WithEnableLogger() Option {
 func WithPanicHandler(f func(err interface{})) Option {
 	return func(tim *Timing) {
 		if f != nil {
-			tim.pf = f
+			tim.panicHandle = f
 		}
 	}
 }

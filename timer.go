@@ -31,43 +31,12 @@ func Entries() []Entry {
 }
 
 // AddJob add a job
-func AddJob(job Job, num uint32, interval time.Duration) *Entry {
+func AddJob(job Job, timeout time.Duration) {
 	lazyInit()
-	return defaultTimer.AddJob(job, num, interval)
+	defaultTimer.AddJob(job, timeout)
 }
 
 // AddJobFunc add a job function
-func AddJobFunc(f JobFunc, num uint32, interval time.Duration) *Entry {
-	return AddJob(f, num, interval)
-}
-
-// AddOneShotJob  add one-shot job
-func AddOneShotJob(job Job, interval time.Duration) *Entry {
-	return AddJob(job, OneShot, interval)
-}
-
-// AddOneShotJobFunc add one-shot job function
-func AddOneShotJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return AddJob(f, OneShot, interval)
-}
-
-// AddPersistJob add persist job
-func AddPersistJob(job Job, interval time.Duration) *Entry {
-	return AddJob(job, Persist, interval)
-}
-
-// AddPersistJobFunc add persist job function
-func AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return AddJob(f, Persist, interval)
-}
-
-// Start start the entry
-func Start(e *Entry, newInterval ...time.Duration) {
-	lazyInit()
-	defaultTimer.Start(e, newInterval...)
-}
-
-// Remove entry form timing
-func Remove(e *Entry) {
-	defaultTimer.Remove(e)
+func AddJobFunc(f JobFunc, timeout time.Duration) {
+	AddJob(f, timeout)
 }

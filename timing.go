@@ -7,39 +7,27 @@ import (
 	"time"
 )
 
-// num define
-const (
-	OneShot = 1
-	Persist = 0
-)
-
 const (
 	// DefaultJobChanSize default job chan size
 	DefaultJobChanSize = 1024
-	// submit job must immediately,time limit timeoutLimit,
+	// DefaultTimeoutLimit submit job must immediately,time limit timeoutLimit,
 	DefaultTimeoutLimit = 50 * time.Millisecond
 )
-
-type mdEntry struct {
-	entry    *Entry
-	interval time.Duration
-}
 
 // Timing keeps track of any number of entries.
 type Timing struct {
 	entries      []*Entry
 	stop         chan struct{}
 	add          chan *Entry
-	remove       chan *Entry
-	active       chan mdEntry
 	snapshot     chan chan []Entry
-	pf           func(err interface{})
+	panicHandle  func(err interface{})
 	jobs         chan Job
 	jobsChanSize int
 	timeoutLimit time.Duration
 	running      bool
 	mu           sync.Mutex
 	location     *time.Location
+	pool         pool
 	logger
 }
 
@@ -47,16 +35,15 @@ type Timing struct {
 func New(opts ...Option) *Timing {
 	tim := &Timing{
 		entries:      make([]*Entry, 0),
-		add:          make(chan *Entry),
-		remove:       make(chan *Entry),
-		active:       make(chan mdEntry),
 		stop:         make(chan struct{}),
+		add:          make(chan *Entry),
 		snapshot:     make(chan chan []Entry),
 		location:     time.Local,
-		pf:           func(err interface{}) {},
+		panicHandle:  func(err interface{}) {},
 		jobsChanSize: DefaultJobChanSize,
 		timeoutLimit: DefaultTimeoutLimit,
 		logger:       newLogger("timing: "),
+		pool:         newPool(),
 	}
 
 	for _, opt := range opts {
@@ -102,8 +89,14 @@ func (sf *Timing) Entries() []Entry {
 }
 
 // AddJob add a job
-func (sf *Timing) AddJob(job Job, num uint32, interval time.Duration) *Entry {
-	entry := NewEntry(job, num, interval)
+func (sf *Timing) AddJob(job Job, timeout time.Duration, opts ...EntryOption) *Timing {
+	entry := sf.pool.get()
+
+	entry.job = job
+	entry.timeout = timeout
+	for _, opt := range opts {
+		opt(entry)
+	}
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -112,71 +105,12 @@ func (sf *Timing) AddJob(job Job, num uint32, interval time.Duration) *Entry {
 	} else {
 		sf.entries = append(sf.entries, entry)
 	}
-	return entry
+	return sf
 }
 
 // AddJobFunc add a job function
-func (sf *Timing) AddJobFunc(f JobFunc, num uint32, interval time.Duration) *Entry {
-	return sf.AddJob(f, num, interval)
-}
-
-// AddOneShotJob  add one-shot job
-func (sf *Timing) AddOneShotJob(job Job, interval time.Duration) *Entry {
-	return sf.AddJob(job, OneShot, interval)
-}
-
-// AddOneShotJobFunc add one-shot job function
-func (sf *Timing) AddOneShotJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return sf.AddJob(f, OneShot, interval)
-}
-
-// AddPersistJob add persist job
-func (sf *Timing) AddPersistJob(job Job, interval time.Duration) *Entry {
-	return sf.AddJob(job, Persist, interval)
-}
-
-// AddPersistJobFunc add persist job function
-func (sf *Timing) AddPersistJobFunc(f JobFunc, interval time.Duration) *Entry {
-	return sf.AddJob(f, Persist, interval)
-}
-
-// Start start the entry
-func (sf *Timing) Start(e *Entry, newInterval ...time.Duration) {
-	var val = time.Duration(-1) // only active this entry
-
-	if e == nil {
-		return
-	}
-
-	if len(newInterval) > 0 {
-		val = newInterval[0]
-	}
-
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-
-	if sf.running {
-		sf.active <- mdEntry{e, val}
-	} else if val > 0 {
-		e.interval = val
-		if !sf.hasEntry(e) {
-			sf.entries = append(sf.entries, e)
-		}
-	}
-}
-
-// Remove entry form timing
-func (sf *Timing) Remove(e *Entry) {
-	if e == nil {
-		return
-	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if sf.running {
-		sf.remove <- e
-	} else {
-		sf.removeEntry(e)
-	}
+func (sf *Timing) AddJobFunc(f JobFunc, timeout time.Duration, opts ...EntryOption) *Timing {
+	return sf.AddJob(f, timeout, opts...)
 }
 
 // Run the timing in its own goroutine, or no-op if already started.
@@ -194,7 +128,7 @@ func (sf *Timing) Run() *Timing {
 func (sf *Timing) wrapJob(job Job) {
 	defer func() {
 		if err := recover(); err != nil {
-			sf.pf(err)
+			sf.panicHandle(err)
 		}
 	}()
 
@@ -209,7 +143,7 @@ func (sf *Timing) run() {
 	// Figure out the next activation times for each entry.
 	now := Now()
 	for _, entry := range sf.entries {
-		entry.next = now.Add(entry.interval)
+		entry.next = now.Add(entry.timeout)
 		sf.Debug("next active: now - %s, next - %s", now, entry.next)
 	}
 	closed := make(chan struct{})
@@ -231,15 +165,18 @@ func (sf *Timing) run() {
 	for {
 		// Determine the next entry to run.
 		sort.Sort(byTime(sf.entries))
-
 		var timer *time.Timer
 		if len(sf.entries) == 0 || sf.entries[0].next.IsZero() {
-			// If there are no entries yet, just sleep -
-			//it still handles new entries and stop requests.
+			for _, v := range sf.entries {
+				sf.pool.put(v)
+			}
+			sf.entries = make([]*Entry, 0)
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
+			// TODO:
 			timer = time.NewTimer(sf.entries[0].next.Sub(now))
 		}
+
 	loop:
 		for {
 			select {
@@ -264,40 +201,15 @@ func (sf *Timing) run() {
 							break loop
 						}
 					}
-
-					e.count++
-					if e.number == 0 || e.count < e.number {
-						e.prev = e.next
-						e.next = now.Add(e.interval)
-					} else {
-						e.next = time.Time{} // mark it, not work until remove it
-					}
+					e.next = time.Time{} // mark it, not work until remove it
 				}
 			case newEntry := <-sf.add:
 				timer.Stop()
 				now = Now()
-				newEntry.next = now.Add(newEntry.interval)
+				newEntry.next = now.Add(newEntry.timeout)
 				sf.entries = append(sf.entries, newEntry)
 				sf.Debug("added: now - %s, next - %s, entry - %p",
 					now, newEntry.next, newEntry)
-			case mdEntry := <-sf.active:
-				timer.Stop()
-				entry := mdEntry.entry
-				if mdEntry.interval > 0 { // if interval < 0 only active entry
-					entry.interval = mdEntry.interval
-				}
-				if !sf.hasEntry(entry) {
-					sf.entries = append(sf.entries, entry)
-				}
-				now = Now()
-				entry.next = now.Add(entry.interval)
-				sf.Debug("actived: now - %s, next - %s, entry - %p",
-					now, entry.next, entry)
-			case e := <-sf.remove:
-				timer.Stop()
-				now = Now()
-				sf.removeEntry(e)
-				sf.Debug("removed: entry - %p", e)
 
 			case replyChan := <-sf.snapshot:
 				replyChan <- sf.entrySnapshot()
@@ -314,25 +226,6 @@ func (sf *Timing) run() {
 	}
 }
 
-func (sf *Timing) hasEntry(e *Entry) bool {
-	for _, v := range sf.entries {
-		if e == v {
-			return true
-		}
-	}
-	return false
-}
-
-func (sf *Timing) removeEntry(e *Entry) {
-	entries := make([]*Entry, 0, len(sf.entries))
-	for _, v := range sf.entries {
-		if e != v {
-			entries = append(entries, v)
-		}
-	}
-	sf.entries = entries
-}
-
 // entrySnapshot returns a copy of the current cron entry list.
 func (sf *Timing) entrySnapshot() []Entry {
 	var entries = make([]Entry, len(sf.entries))
@@ -340,4 +233,47 @@ func (sf *Timing) entrySnapshot() []Entry {
 		entries[i] = *e
 	}
 	return entries
+}
+
+// Job job interface
+type Job interface {
+	Run()
+}
+
+// JobFunc job function
+type JobFunc func()
+
+// Run implement job interface
+func (f JobFunc) Run() { f() }
+
+// Entry consists of a schedule and the func to execute on that schedule.
+type Entry struct {
+	// timeout time timeout
+	timeout time.Duration
+	// next time the job will run, or the zero time if Timing has not been
+	// started or this entry is unsatisfiable
+	next time.Time
+	// job is the thing that want to run.
+	job Job
+	// use goroutine or not do the job
+	useGoroutine uint32
+}
+
+// byTime is a wrapper for sorting the entry array by time
+// (with zero time at the end).
+type byTime []*Entry
+
+func (s byTime) Len() int      { return len(s) }
+func (s byTime) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s byTime) Less(i, j int) bool {
+	// Two zero times should return false.
+	// Otherwise, zero is "greater" than any other time.
+	// (To sort it at the end of the list.)
+	if s[i].next.IsZero() {
+		return false
+	}
+	if s[j].next.IsZero() {
+		return true
+	}
+	return s[i].next.Before(s[j].next)
 }

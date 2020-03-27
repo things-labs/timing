@@ -17,9 +17,9 @@ func (sf testJob) Run() {
 }
 
 func TestHashes(t *testing.T) {
-	tim := New()
-	tim.AddOneShotJobFunc(func() {}, time.Millisecond*100)
+	tim := New(WithEnableLogger())
 
+	tim.AddJobFunc(func() {}, time.Millisecond*100)
 	tim.Run()
 	if got := tim.HasRunning(); got != true {
 		t.Errorf("HasRunning() = %v, want %v", got, true)
@@ -34,40 +34,34 @@ func TestHashes(t *testing.T) {
 
 func TestHashesJob(t *testing.T) {
 	tim := New()
-	e1 := tim.AddPersistJobFunc(func() {}, time.Second)
-	tim.Start(tim.AddJobFunc(func() {}, Persist, time.Second), time.Second*2)
-	tim.Run()
-	tim.AddPersistJob(&emptyJob{}, time.Second*30)
-	tim.AddJob(&emptyJob{}, Persist, time.Second)
-	if got := len(tim.Entries()); got != 4 {
-		t.Errorf("HasRunning() = %v, want %v", got, 4)
-	}
-	tim.Start(e1)
 
-	tim.Remove(e1)
+	tim.AddJobFunc(func() {}, time.Second)
+	tim.Run()
+	tim.AddJob(&emptyJob{}, time.Second)
+	tim.AddJob(&emptyJob{}, time.Second*30)
+	if got := len(tim.Entries()); got != 3 {
+		t.Errorf("HasRunning() = %v, want %v", got, 3)
+	}
+	time.Sleep(time.Second * 2)
 	if got := len(tim.Entries()); got != 3 {
 		t.Errorf("HasRunning() = %v, want %v", got, 3)
 	}
 
-	tim.Start(e1, time.Second*2)
-	tim.Start(nil)
-	tim.Start(nil, time.Second)
-	tim.Remove(nil)
 	tim.Location()
 }
 
 func ExampleNew() {
 	tim := New().Run()
 
-	tim.AddOneShotJobFunc(func() {
+	tim.AddJobFunc(func() {
 		fmt.Println("1")
-	}, time.Millisecond*100).WithGoroutine(true)
+	}, time.Millisecond*100, WithGoroutine())
 	tim.AddJobFunc(func() {
 		fmt.Println("2")
-	}, OneShot, time.Millisecond*200)
-	tim.AddOneShotJob(&testJob{}, time.Millisecond*300)
-	tim.AddJob(&testJob{}, 2, time.Millisecond*400)
-	tim.AddOneShotJobFunc(func() {
+	}, time.Millisecond*200)
+	tim.AddJob(&testJob{}, time.Millisecond*300)
+	tim.AddJob(&testJob{}, time.Millisecond*400)
+	tim.AddJobFunc(func() {
 		defer func() {
 			_ = recover()
 		}()
@@ -77,7 +71,6 @@ func ExampleNew() {
 	// Output:
 	// 1
 	// 2
-	// job
 	// job
 	// job
 }
