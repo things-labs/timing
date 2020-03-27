@@ -17,7 +17,7 @@ const (
 	// DefaultJobChanSize default job chan size
 	DefaultJobChanSize = 1024
 	// submit job must immediately,time limit timeoutLimit,
-	timeoutLimit = 200 * time.Millisecond
+	DefaultTimeoutLimit = 50 * time.Millisecond
 )
 
 type mdEntry struct {
@@ -36,6 +36,7 @@ type Timing struct {
 	pf           func(err interface{})
 	jobs         chan Job
 	jobsChanSize int
+	timeoutLimit time.Duration
 	running      bool
 	mu           sync.Mutex
 	location     *time.Location
@@ -54,6 +55,7 @@ func New(opts ...Option) *Timing {
 		location:     time.Local,
 		pf:           func(err interface{}) {},
 		jobsChanSize: DefaultJobChanSize,
+		timeoutLimit: DefaultTimeoutLimit,
 		logger:       newLogger("timing: "),
 	}
 
@@ -224,7 +226,7 @@ func (sf *Timing) run() {
 		}
 	}()
 	// if time
-	timeout := time.NewTimer(timeoutLimit)
+	timeout := time.NewTimer(sf.timeoutLimit)
 	defer timeout.Stop()
 	for {
 		// Determine the next entry to run.
@@ -255,7 +257,7 @@ func (sf *Timing) run() {
 					if atomic.LoadUint32(&e.useGoroutine) == 1 {
 						go e.job.Run()
 					} else {
-						timeout.Reset(timeoutLimit)
+						timeout.Reset(sf.timeoutLimit)
 						select {
 						case sf.jobs <- e.job:
 						case <-timeout.C:

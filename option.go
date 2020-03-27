@@ -21,6 +21,15 @@ func WithJobChanSize(size int) Option {
 	}
 }
 
+// WithTimeoutLimit overwrite job chan size,default value is DefaultTimeoutLimit
+func WithTimeoutLimit(tm time.Duration) Option {
+	return func(tim *Timing) {
+		if tm > 0 {
+			tim.timeoutLimit = tm
+		}
+	}
+}
+
 // WithLoggerProvider override default logger provider
 func WithLoggerProvider(p LogProvider) Option {
 	return func(tim *Timing) {
