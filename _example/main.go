@@ -29,7 +29,7 @@ func main() {
 		log.Println("4")
 	}, time.Second*4)
 
-	time.Sleep(time.Second * 30)
-	t.Close()
+	time.Sleep(time.Second * 60)
+	log.Println(t.Count())
 	time.Sleep(time.Second * 5)
 }

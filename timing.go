@@ -171,7 +171,7 @@ func (sf *Timing) run() {
 			if cap(sf.entries) >= sf.limitSize {
 				sf.entries = make([]*Entry, 0, sf.limitSize)
 			} else {
-				sf.entries = sf.entries[:]
+				sf.entries = sf.entries[:0]
 			}
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
