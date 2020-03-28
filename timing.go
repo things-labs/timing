@@ -19,7 +19,7 @@ type Timing struct {
 	entries      []*Entry
 	stop         chan struct{}
 	add          chan *Entry
-	snapshot     chan chan []Entry
+	snapshot     chan chan int
 	panicHandle  func(err interface{})
 	jobs         chan Job
 	jobsChanSize int
@@ -27,7 +27,7 @@ type Timing struct {
 	running      bool
 	mu           sync.Mutex
 	location     *time.Location
-	pool         pool
+	pool         *sync.Pool
 	logger
 }
 
@@ -37,7 +37,7 @@ func New(opts ...Option) *Timing {
 		entries:      make([]*Entry, 0),
 		stop:         make(chan struct{}),
 		add:          make(chan *Entry),
-		snapshot:     make(chan chan []Entry),
+		snapshot:     make(chan chan int),
 		location:     time.Local,
 		panicHandle:  func(err interface{}) {},
 		jobsChanSize: DefaultJobChanSize,
@@ -76,21 +76,21 @@ func (sf *Timing) HasRunning() bool {
 	return sf.running
 }
 
-// Entries returns a snapshot of the Timing entries.
-func (sf *Timing) Entries() []Entry {
+// Count returns a count of the Timing entries.
+func (sf *Timing) Count() int {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	if sf.running {
-		replyChan := make(chan []Entry, 1)
+		replyChan := make(chan int, 1)
 		sf.snapshot <- replyChan
 		return <-replyChan
 	}
-	return sf.entrySnapshot()
+	return len(sf.entries)
 }
 
 // AddJob add a job
 func (sf *Timing) AddJob(job Job, timeout time.Duration, opts ...EntryOption) *Timing {
-	entry := sf.pool.get()
+	entry := sf.get()
 
 	entry.job = job
 	entry.timeout = timeout
@@ -167,15 +167,27 @@ func (sf *Timing) run() {
 		sort.Sort(byTime(sf.entries))
 		var timer *time.Timer
 		if len(sf.entries) == 0 || sf.entries[0].next.IsZero() {
-			for _, v := range sf.entries {
-				sf.pool.put(v)
-			}
+			sf.put(sf.entries...)
 			sf.entries = make([]*Entry, 0)
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
-			// TODO:
+			pos := 0
+			for i := range sf.entries {
+				if !sf.entries[len(sf.entries)-1-i].next.IsZero() {
+					pos = len(sf.entries) - i
+					break
+				}
+			}
+			sf.put(sf.entries[pos:]...)
+			sf.entries = sf.entries[0:pos]
+
+			if cap(sf.entries) >= 1024 && cap(sf.entries) > 2*len(sf.entries) {
+				newEntries := make([]*Entry, 0, len(sf.entries))
+				sf.entries = append(newEntries, sf.entries...)
+			}
 			timer = time.NewTimer(sf.entries[0].next.Sub(now))
 		}
+		sf.Debug("entries len: %d, cap: %d", len(sf.entries), cap(sf.entries))
 
 	loop:
 		for {
@@ -212,7 +224,7 @@ func (sf *Timing) run() {
 					now, newEntry.next, newEntry)
 
 			case replyChan := <-sf.snapshot:
-				replyChan <- sf.entrySnapshot()
+				replyChan <- len(sf.entries)
 				continue
 
 			case <-sf.stop:
@@ -226,13 +238,22 @@ func (sf *Timing) run() {
 	}
 }
 
-// entrySnapshot returns a copy of the current cron entry list.
-func (sf *Timing) entrySnapshot() []Entry {
-	var entries = make([]Entry, len(sf.entries))
-	for i, e := range sf.entries {
-		entries[i] = *e
+func newPool() *sync.Pool {
+	return &sync.Pool{
+		New: func() interface{} { return &Entry{} },
 	}
-	return entries
+}
+
+func (sf *Timing) get() *Entry {
+	e := sf.pool.Get().(*Entry)
+	e.useGoroutine = 0
+	return e
+}
+
+func (sf *Timing) put(entries ...*Entry) {
+	for _, e := range entries {
+		sf.pool.Put(e)
+	}
 }
 
 // Job job interface

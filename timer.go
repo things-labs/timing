@@ -25,9 +25,9 @@ func HasRunning() bool {
 	return defaultTimer.HasRunning()
 }
 
-// Entries returns a snapshot of the Timing entries.
-func Entries() []Entry {
-	return defaultTimer.Entries()
+// Count returns a snapshot of the Timing entries.
+func Count() int {
+	return defaultTimer.Count()
 }
 
 // AddJob add a job

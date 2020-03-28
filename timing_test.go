@@ -17,7 +17,7 @@ func (sf testJob) Run() {
 }
 
 func TestHashes(t *testing.T) {
-	tim := New(WithEnableLogger())
+	tim := New()
 
 	tim.AddJobFunc(func() {}, time.Millisecond*100)
 	tim.Run()
@@ -39,12 +39,12 @@ func TestHashesJob(t *testing.T) {
 	tim.Run()
 	tim.AddJob(&emptyJob{}, time.Second)
 	tim.AddJob(&emptyJob{}, time.Second*30)
-	if got := len(tim.Entries()); got != 3 {
+	if got := tim.Count(); got != 3 {
 		t.Errorf("HasRunning() = %v, want %v", got, 3)
 	}
 	time.Sleep(time.Second * 2)
-	if got := len(tim.Entries()); got != 3 {
-		t.Errorf("HasRunning() = %v, want %v", got, 3)
+	if got := tim.Count(); got != 1 {
+		t.Errorf("HasRunning() = %v, want %v", got, 1)
 	}
 
 	tim.Location()
