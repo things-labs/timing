@@ -27,14 +27,14 @@ func WithLocation(loc *time.Location) Option {
 	}
 }
 
-// WithJobChanSize overwrite job chan size,default value is DefaultJobChanSize
-func WithJobChanSize(size int) Option {
+// WithLimitSize overwrite job chan size,default value is DefaultLimitSize
+func WithLimitSize(size int) Option {
 	return func(tim *Timing) {
-		tim.jobsChanSize = size
+		tim.limitSize = size
 	}
 }
 
-// WithTimeoutLimit overwrite job chan size,default value is DefaultTimeoutLimit
+// WithTimeoutLimit overwrite timeout limit,default value is DefaultTimeoutLimit
 func WithTimeoutLimit(tm time.Duration) Option {
 	return func(tim *Timing) {
 		if tm > 0 {

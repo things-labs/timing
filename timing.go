@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	// DefaultJobChanSize default job chan size
-	DefaultJobChanSize = 1024
+	// DefaultLimitSize default job chan size and entries slice tune limit size
+	DefaultLimitSize = 1024
 	// DefaultTimeoutLimit submit job must immediately,time limit timeoutLimit,
 	DefaultTimeoutLimit = 50 * time.Millisecond
 )
@@ -22,7 +22,7 @@ type Timing struct {
 	snapshot     chan chan int
 	panicHandle  func(err interface{})
 	jobs         chan Job
-	jobsChanSize int
+	limitSize    int
 	timeoutLimit time.Duration
 	running      bool
 	mu           sync.Mutex
@@ -40,7 +40,7 @@ func New(opts ...Option) *Timing {
 		snapshot:     make(chan chan int),
 		location:     time.Local,
 		panicHandle:  func(err interface{}) {},
-		jobsChanSize: DefaultJobChanSize,
+		limitSize:    DefaultLimitSize,
 		timeoutLimit: DefaultTimeoutLimit,
 		logger:       newLogger("timing: "),
 		pool:         newPool(),
@@ -49,7 +49,7 @@ func New(opts ...Option) *Timing {
 	for _, opt := range opts {
 		opt(tim)
 	}
-	tim.jobs = make(chan Job, tim.jobsChanSize)
+	tim.jobs = make(chan Job, tim.limitSize)
 	return tim
 }
 
@@ -168,11 +168,16 @@ func (sf *Timing) run() {
 		var timer *time.Timer
 		if len(sf.entries) == 0 || sf.entries[0].next.IsZero() {
 			sf.put(sf.entries...)
-			sf.entries = make([]*Entry, 0)
+			if cap(sf.entries) >= sf.limitSize {
+				sf.entries = make([]*Entry, 0, sf.limitSize)
+			} else {
+				sf.entries = sf.entries[:]
+			}
 			timer = time.NewTimer(100000 * time.Hour)
 		} else {
 			pos := 0
 			for i := range sf.entries {
+				// find last zero time position
 				if !sf.entries[len(sf.entries)-1-i].next.IsZero() {
 					pos = len(sf.entries) - i
 					break
@@ -181,7 +186,7 @@ func (sf *Timing) run() {
 			sf.put(sf.entries[pos:]...)
 			sf.entries = sf.entries[0:pos]
 
-			if cap(sf.entries) >= 1024 && cap(sf.entries) > 2*len(sf.entries) {
+			if len(sf.entries) >= sf.limitSize && (cap(sf.entries)*3/4) > len(sf.entries) {
 				newEntries := make([]*Entry, 0, len(sf.entries))
 				sf.entries = append(newEntries, sf.entries...)
 			}
