@@ -7,7 +7,7 @@
 [![Licence](https://img.shields.io/github/license/thinkgos/timing)](https://raw.githubusercontent.com/thinkgos/timing/master/LICENSE)  
  - 时间定时器,采用优先级队列
  - 时间任务调度,任务处理
- - 任务默认在一个协程池中处理,任务频繁不耗时可以使用
+ - 任务默认在一个协程中处理,任务频繁不耗时可以使用
  - 每一个条目可以配置是否使用goroutine处理
  - 扫描超时条目时间复杂度o(1).
  - 不限最大时间
@@ -16,7 +16,7 @@
 
 Use go get.
 ```bash
-    go get github.com/thinkgos/timing/v2
+    go get github.com/thinkgos/timing/v3
 ```
 
 Then import the modbus package into your own code.
