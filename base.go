@@ -45,10 +45,11 @@ func (sf *Base) HasRunning() bool {
 }
 
 // Len the number timer of the base.
-func (sf *Base) Len() int {
+func (sf *Base) Len() (length int) {
 	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.data.Len()
+	length = sf.data.Len()
+	sf.mu.Unlock()
+	return
 }
 
 // AddJob add a job
@@ -79,12 +80,12 @@ func (sf *Base) Delete(tm *Timer) {
 		return
 	}
 	sf.mu.Lock()
-	defer sf.mu.Unlock()
 	if sf.data.contains(tm) {
 		delete(sf.data.items, tm)
 		heap.Remove(sf.data, tm.index)
 		sf.cond.Broadcast()
 	}
+	sf.mu.Unlock()
 }
 
 // Modify modify timer timeout,and restart immediately.

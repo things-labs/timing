@@ -12,8 +12,8 @@ func (h heapData) Swap(i, j int) {
 }
 func (h *heapData) Less(i, j int) bool {
 	// Two zero times should return false.
-	// Otherwise, zero is "greater" than any other time.
-	// (To sort it at the end of the list.)
+	// Otherwise, zero is "smaller" than any other time.
+	// (To sort it at the front of the list.)
 	if h.queue[i].next.IsZero() {
 		return true
 	}

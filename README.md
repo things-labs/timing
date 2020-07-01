@@ -5,23 +5,23 @@
 ![Action Status](https://github.com/thinkgos/timing/workflows/Go/badge.svg)
 [![Go Report Card](https://goreportcard.com/badge/github.com/thinkgos/timing)](https://goreportcard.com/report/github.com/thinkgos/timing)
 [![Licence](https://img.shields.io/github/license/thinkgos/timing)](https://raw.githubusercontent.com/thinkgos/timing/master/LICENSE)  
- - 时间定时器,采用优先级队列
- - 时间任务调度,任务处理
- - 任务默认在一个协程中处理,任务频繁不耗时可以使用
- - 每一个条目可以配置是否使用goroutine处理
- - 扫描超时条目时间复杂度o(1).
- - 不限最大时间
 
+### Feature
+ - job default process in a goroutine,so the job do not take too long. if you have long time job,please use `WithGoroutine`
+ - you can define every timer use goroutine.
+ - scan timeout's timer time complexity O(1)
+ - not limited max timeout
+ 
 ### Installation
 
 Use go get.
 ```bash
-    go get github.com/thinkgos/timing/v3
+    go get github.com/thinkgos/timing/v4
 ```
 
 Then import the modbus package into your own code.
 ```bash
-    import modbus "github.com/thinkgos/timing/v3"
+    import modbus "github.com/thinkgos/timing/v4"
 ```
 
 ### Example
@@ -33,28 +33,29 @@ import (
 	"log"
 	"time"
 
-	"github.com/thinkgos/timing/v3"
+	"github.com/thinkgos/timing/v4"
 )
 
 func main() {
-	var f func()
-	t := timing.New(timing.WithEnableLogger()).Run()
-	f = func() {
-		fmt.Println("haha")
-		t.AddJobFunc(f, time.Second*1)
-	}
-	t.AddJobFunc(f, time.Second*1)
-	t.AddJobFunc(f, time.Second*1)
-	t.AddJobFunc(f, time.Second*1)
+	base := timing.New().Run()
 
-	time.Sleep(time.Second * 30)
-	t.Close()
-	time.Sleep(time.Second * 5)
+	tm := timing.NewTimer(time.Second)
+	tm.WithJobFunc(func() {
+		log.Println("hello 1")
+		base.Add(tm)
+	})
+
+	tm1 := timing.NewTimer(time.Second * 2)
+	tm1.WithJobFunc(func() {
+		log.Println("hello 2")
+		base.Add(tm1)
+	})
+	base.Add(tm)
+	base.Add(tm1)
+	time.Sleep(time.Second * 60)
 }
 
 ```
 
-**Note:** 
-    默认情况下在job函数处理里,任务应尽快处理,不宣有阻塞的任务,如果使用的为耗时任务,请使用goroutine
     
  

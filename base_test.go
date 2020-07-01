@@ -33,10 +33,12 @@ func TestBase(t *testing.T) {
 	tim.Add(e1, time.Millisecond*150)
 
 	e2 := NewTimer(time.Millisecond * 100).WithGoroutine()
-	tim.Add(e2, 0)
+	tim.Add(e2, time.Millisecond)
+	tim.Add(e2, time.Millisecond*10) //
 	time.Sleep(time.Second)
 
 	// improve couver
+	tim.Run()
 	tim.Modify(nil, time.Second)
 	tim.Delete(nil)
 	tim.Add(nil)

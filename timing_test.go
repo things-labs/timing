@@ -29,7 +29,7 @@ func TestTiming(t *testing.T) {
 	Add(e1, time.Millisecond*150)
 
 	e2 := NewTimer(time.Millisecond * 100).WithGoroutine()
-	Add(e2, 0)
+	Add(e2, time.Millisecond)
 	time.Sleep(time.Second)
 
 	// improve couver
