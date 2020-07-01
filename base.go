@@ -172,12 +172,12 @@ func (sf *Base) pop(closed chan struct{}, notice chan time.Duration) (item *Time
 		}
 
 		if item = sf.data.peek(); item != nil {
-			if now := time.Now(); item.next.Before(now) {
+			now := time.Now()
+			if item.next.Before(now) {
 				heap.Pop(sf.data)
 				return
-			} else {
-				d = item.next.Sub(now)
 			}
+			d = item.next.Sub(now)
 		} else {
 			d = time.Hour * 365 * 24
 		}
