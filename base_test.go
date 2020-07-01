@@ -39,34 +39,16 @@ func TestHashesJob(t *testing.T) {
 	tim.Run()
 	tim.AddJob(&emptyJob{}, time.Second)
 	tim.AddJob(&emptyJob{}, time.Second*30)
-	if got := tim.Count(); got != 3 {
-		t.Errorf("HasRunning() = %v, want %v", got, 3)
-	}
 	time.Sleep(time.Second * 2)
-	if got := tim.Count(); got != 1 {
-		t.Errorf("HasRunning() = %v, want %v", got, 1)
-	}
-
-	tim.Location()
 }
 
 func ExampleNew() {
 	tim := New().Run()
 
-	tim.AddJobFunc(func() {
-		fmt.Println("1")
-	}, time.Millisecond*100, WithGoroutine())
-	tim.AddJobFunc(func() {
-		fmt.Println("2")
-	}, time.Millisecond*200)
+	tim.AddJobFunc(func() { fmt.Println("1") }, time.Millisecond*100)
+	tim.AddJobFunc(func() { fmt.Println("2") }, time.Millisecond*200)
 	tim.AddJob(&testJob{}, time.Millisecond*300)
 	tim.AddJob(&testJob{}, time.Millisecond*400)
-	tim.AddJobFunc(func() {
-		defer func() {
-			_ = recover()
-		}()
-		panic("painc happen")
-	}, time.Millisecond*100)
 	time.Sleep(time.Second * 2)
 	// Output:
 	// 1
