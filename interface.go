@@ -17,3 +17,7 @@ func wrapJob(job Job) {
 	}()
 	job.Run()
 }
+
+type emptyJob struct{}
+
+func (emptyJob) Run() {}

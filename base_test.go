@@ -6,40 +6,40 @@ import (
 	"time"
 )
 
-type emptyJob struct{}
-
-func (emptyJob) Run() {}
-
 type testJob struct{}
 
 func (sf testJob) Run() {
 	fmt.Println("job")
 }
 
-func TestHashes(t *testing.T) {
-	tim := New()
+func TestBase(t *testing.T) {
+	tim := New().Run()
 
-	tim.AddJobFunc(func() {}, time.Millisecond*100)
-	tim.Run()
+	defer tim.Close()
+	if got := tim.Len(); got != 0 {
+		t.Errorf("Len() = %v, want %v", got, 0)
+	}
 	if got := tim.HasRunning(); got != true {
 		t.Errorf("HasRunning() = %v, want %v", got, true)
 	}
-	tim.Run()
-	time.Sleep(time.Millisecond * 200)
-	_ = tim.Close()
-	if got := tim.HasRunning(); got != false {
-		t.Errorf("HasRunning() = %v, want %v", got, false)
-	}
-}
 
-func TestHashesJob(t *testing.T) {
-	tim := New()
+	e := NewJobFunc(func() {}, time.Millisecond*100)
+	tim.Add(e)
+	tim.Delete(e)
+	tim.Modify(e, time.Millisecond*200)
+	time.Sleep(time.Second)
 
-	tim.AddJobFunc(func() {}, time.Second)
-	tim.Run()
-	tim.AddJob(&emptyJob{}, time.Second)
-	tim.AddJob(&emptyJob{}, time.Second*30)
-	time.Sleep(time.Second * 2)
+	e1 := NewTimer(time.Millisecond * 100).WithGoroutine()
+	tim.Add(e1, time.Millisecond*150)
+
+	e2 := NewTimer(time.Millisecond * 100).WithGoroutine()
+	tim.Add(e2, 0)
+	time.Sleep(time.Second)
+
+	// improve couver
+	tim.Modify(nil, time.Second)
+	tim.Delete(nil)
+	tim.Add(nil)
 }
 
 func ExampleNew() {

@@ -5,28 +5,47 @@ import (
 	"time"
 )
 
-var defaultTimer = New()
+var base = New()
 var once sync.Once
 
 func lazyInit() {
-	once.Do(func() {
-		defaultTimer.Run()
-	})
-
+	once.Do(func() { base.Run() })
 }
 
-// HasRunning 运行状态
+// Len the number timer of the base.
+func Len() int {
+	return base.Len()
+}
+
+// HasRunning base running status.
 func HasRunning() bool {
-	return defaultTimer.HasRunning()
+	return base.HasRunning()
 }
 
 // AddJob add a job
-func AddJob(job Job, timeout time.Duration) error {
-	lazyInit()
-	return defaultTimer.AddJob(job, timeout)
+func AddJob(job Job, timeout time.Duration) *Timer {
+	tm := NewJob(job, timeout)
+	Add(tm)
+	return tm
 }
 
 // AddJobFunc add a job function
-func AddJobFunc(f JobFunc, timeout time.Duration) error {
-	return AddJob(f, timeout)
+func AddJobFunc(f func(), timeout time.Duration) *Timer { return AddJob(JobFunc(f), timeout) }
+
+// Add add timer to base. and start immediately.
+func Add(tm *Timer, newTimeout ...time.Duration) {
+	lazyInit()
+	base.Add(tm, newTimeout...)
+}
+
+// Delete Delete timer from base.
+func Delete(tm *Timer) {
+	lazyInit()
+	base.Delete(tm)
+}
+
+// Modify modify timer timeout,and restart immediately.
+func Modify(tm *Timer, timeout time.Duration) {
+	lazyInit()
+	base.Modify(tm, timeout)
 }

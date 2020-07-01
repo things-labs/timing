@@ -13,13 +13,13 @@ type Timer struct {
 	next time.Time
 	// job is the thing that want to run.
 	job Job
-	// use goroutine or not do the job
+	// use goroutine
 	useGoroutine bool
 }
 
 // NewTimer new timer
 func NewTimer(timeout time.Duration) *Timer {
-	return &Timer{timeout: timeout}
+	return &Timer{timeout: timeout, job: emptyJob{}}
 }
 
 // NewJob new timer with job.
@@ -29,7 +29,7 @@ func NewJob(job Job, timeout time.Duration) *Timer {
 
 // NewJobFunc new timer with job function.
 func NewJobFunc(f func(), timeout time.Duration) *Timer {
-	return NewJob(JobFunc(f), timeout)
+	return NewTimer(timeout).WithJobFunc(f)
 }
 
 // WithGoroutine with goroutine

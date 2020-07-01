@@ -2,12 +2,9 @@ package timing
 
 import (
 	"container/heap"
-	"errors"
 	"sync"
 	"time"
 )
-
-var ErrClosed = errors.New("timing is closed")
 
 // Base keeps track of any number of entries.
 type Base struct {
@@ -15,26 +12,21 @@ type Base struct {
 	mu      sync.Mutex
 	cond    sync.Cond
 	running bool
-	logger
 }
 
-// New new a time with option
-func New(opts ...Option) *Base {
+// New new a base with option
+func New() *Base {
 	tim := &Base{
 		data: &heapData{
 			queue: make([]*Timer, 0),
 			items: make(map[*Timer]struct{}),
 		},
-		logger: newLogger("timing: "),
 	}
 	tim.cond.L = &tim.mu
-	for _, opt := range opts {
-		opt(tim)
-	}
 	return tim
 }
 
-// Close the time
+// Close the base
 func (sf *Base) Close() error {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -45,71 +37,67 @@ func (sf *Base) Close() error {
 	return nil
 }
 
-// HasRunning 运行状态
+// HasRunning base running status.
 func (sf *Base) HasRunning() bool {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.running
 }
 
+// Len the number timer of the base.
 func (sf *Base) Len() int {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	return sf.data.Len()
 }
 
-func (sf *Base) Add(tm *Timer) error {
-	if tm == nil {
-		return nil
-	}
-	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	if !sf.running {
-		return ErrClosed
-	}
-	sf.addTimer(tm)
-	return nil
-}
-
 // AddJob add a job
-func (sf *Base) AddJob(job Job, timeout time.Duration) error {
-	return sf.Add(NewJob(job, timeout))
+func (sf *Base) AddJob(job Job, timeout time.Duration) *Timer {
+	tm := NewJob(job, timeout)
+	sf.Add(tm)
+	return tm
 }
 
 // AddJobFunc add a job function
-func (sf *Base) AddJobFunc(f JobFunc, timeout time.Duration) error {
+func (sf *Base) AddJobFunc(f JobFunc, timeout time.Duration) *Timer {
 	return sf.AddJob(f, timeout)
 }
 
-func (sf *Base) Delete(tm *Timer) error {
+// Add add timer to base. and start immediately.
+func (sf *Base) Add(tm *Timer, newTimeout ...time.Duration) {
 	if tm == nil {
-		return nil
+		return
+	}
+	sf.mu.Lock()
+	sf.start(tm, newTimeout...)
+	sf.mu.Unlock()
+}
+
+// Delete Delete timer from base.
+func (sf *Base) Delete(tm *Timer) {
+	if tm == nil {
+		return
 	}
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
-	if !sf.running {
-		return ErrClosed
-	}
 	if sf.data.contains(tm) {
 		delete(sf.data.items, tm)
 		heap.Remove(sf.data, tm.index)
+		sf.cond.Broadcast()
 	}
-	return nil
 }
 
-// Modify 修改条目的周期时间,重置计数且重新启动定时器
+// Modify modify timer timeout,and restart immediately.
 func (sf *Base) Modify(tm *Timer, timeout time.Duration) {
 	if tm == nil {
 		return
 	}
-
 	sf.mu.Lock()
-	tm.timeout = timeout
-	sf.addTimer(tm)
+	sf.start(tm, timeout)
 	sf.mu.Unlock()
 }
 
-// Run the timing in its own goroutine, or no-op if already started.
+// Run the base in its own goroutine, or no-op if already started.
 func (sf *Base) Run() *Base {
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
@@ -121,19 +109,20 @@ func (sf *Base) Run() *Base {
 	return sf
 }
 
-func (sf *Base) addTimer(tm *Timer) {
+func (sf *Base) start(tm *Timer, newTimeout ...time.Duration) {
+	if len(newTimeout) > 0 {
+		tm.timeout = newTimeout[0]
+	}
+	tm.next = time.Now().Add(tm.timeout)
 	if sf.data.contains(tm) {
-		tm.next = time.Now().Add(tm.timeout)
 		heap.Fix(sf.data, tm.index)
 	} else {
-		tm.next = time.Now().Add(tm.timeout)
 		heap.Push(sf.data, tm)
 	}
+	sf.cond.Broadcast()
 }
 
 func (sf *Base) run() {
-	sf.Debug("run start!")
-
 	notice := make(chan time.Duration)
 	closed := make(chan struct{})
 	// if time
@@ -141,8 +130,6 @@ func (sf *Base) run() {
 	defer tm.Stop()
 
 	go func() {
-
-		sf.Debug("work start!")
 		for {
 			select {
 			case <-tm.C:
@@ -150,7 +137,6 @@ func (sf *Base) run() {
 			case d := <-notice:
 				tm.Reset(d)
 			case <-closed:
-				sf.Debug("work stop!")
 				return
 			}
 		}
@@ -169,22 +155,23 @@ func (sf *Base) run() {
 			sf.cond.Wait()
 			sf.mu.Unlock()
 			continue
-		} else {
-			now := time.Now()
-			if near.next.After(now) {
-				d := near.next.Sub(now)
-				sf.mu.Unlock()
-				notice <- d
-				continue
-			}
 		}
+		now := time.Now()
+		if near.next.After(now) {
+			d := near.next.Sub(now)
+			sf.mu.Unlock()
+			notice <- d
+			continue
+		}
+
 		heap.Pop(sf.data)
 		sf.mu.Unlock()
-		sf.Debug("run: next - %s, entry - %p", near.next, near)
-		if near.useGoroutine {
-			go near.job.Run()
-		} else {
-			wrapJob(near.job)
+		if near.job != nil {
+			if near.useGoroutine {
+				go near.job.Run()
+			} else {
+				wrapJob(near.job)
+			}
 		}
 	}
 }

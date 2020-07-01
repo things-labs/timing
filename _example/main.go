@@ -4,32 +4,24 @@ import (
 	"log"
 	"time"
 
-	"github.com/thinkgos/timing/v3"
+	"github.com/thinkgos/timing/v4"
 )
 
 func main() {
-	var f func()
-	t := timing.New(timing.WithEnableLogger()).Run()
-	f = func() {
-		log.Println("period")
-		t.AddJobFunc(f, time.Second*1)
-	}
-	t.AddJobFunc(f, time.Second*1)
+	base := timing.New().Run()
 
-	t.AddJobFunc(func() {
-		log.Println("1")
-	}, time.Second*1)
-	t.AddJobFunc(func() {
-		log.Println("2")
-	}, time.Second*2)
-	t.AddJobFunc(func() {
-		log.Println("3")
-	}, time.Second*3)
-	t.AddJobFunc(func() {
-		log.Println("4")
-	}, time.Second*4)
+	tm := timing.NewTimer(time.Second)
+	tm.WithJobFunc(func() {
+		log.Println("hello 1")
+		base.Add(tm)
+	})
 
+	tm1 := timing.NewTimer(time.Second * 2)
+	tm1.WithJobFunc(func() {
+		log.Println("hello 2")
+		base.Add(tm1)
+	})
+	base.Add(tm)
+	base.Add(tm1)
 	time.Sleep(time.Second * 60)
-	log.Println(t.Count())
-	time.Sleep(time.Second * 5)
 }
