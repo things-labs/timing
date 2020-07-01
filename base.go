@@ -2,6 +2,7 @@ package timing
 
 import (
 	"container/heap"
+	"errors"
 	"sync"
 	"time"
 )
@@ -144,28 +145,10 @@ func (sf *Base) run() {
 	}()
 
 	for {
-		sf.mu.Lock()
-		if !sf.running {
-			sf.mu.Unlock()
-			closed <- struct{}{}
+		item, err := sf.pop(closed, notice)
+		if err != nil {
 			return
 		}
-		item := sf.data.peek()
-		if item == nil {
-			notice <- time.Hour * 365 * 24
-			sf.cond.Wait()
-			sf.mu.Unlock()
-			continue
-		}
-		if now := time.Now(); item.next.After(now) {
-			notice <- item.next.Sub(now)
-			sf.cond.Wait()
-			sf.mu.Unlock()
-			continue
-		}
-
-		heap.Pop(sf.data)
-		sf.mu.Unlock()
 		if item.job != nil {
 			if item.useGoroutine {
 				go item.job.Run()
@@ -173,5 +156,32 @@ func (sf *Base) run() {
 				wrapJob(item.job)
 			}
 		}
+	}
+}
+
+func (sf *Base) pop(closed chan struct{}, notice chan time.Duration) (item *Timer, err error) {
+	var d time.Duration
+
+	sf.mu.Lock()
+	defer sf.mu.Unlock()
+	for {
+		if !sf.running {
+			closed <- struct{}{}
+			err = errors.New("base is closed")
+			return
+		}
+
+		if item = sf.data.peek(); item != nil {
+			if now := time.Now(); item.next.Before(now) {
+				heap.Pop(sf.data)
+				return
+			} else {
+				d = item.next.Sub(now)
+			}
+		} else {
+			d = time.Hour * 365 * 24
+		}
+		notice <- d
+		sf.cond.Wait()
 	}
 }

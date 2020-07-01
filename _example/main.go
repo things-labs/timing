@@ -10,7 +10,7 @@ import (
 func main() {
 	base := timing.New().Run()
 
-	tm := timing.NewTimer(time.Second * 5)
+	tm := timing.NewTimer(time.Second * 7)
 	tm.WithJobFunc(func() {
 		log.Println("hello 1")
 		base.Add(tm)
