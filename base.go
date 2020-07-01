@@ -29,19 +29,20 @@ func New() *Base {
 // Close the base
 func (sf *Base) Close() error {
 	sf.mu.Lock()
-	defer sf.mu.Unlock()
 	if sf.running {
 		sf.running = false
 		sf.cond.Broadcast()
 	}
+	sf.mu.Unlock()
 	return nil
 }
 
 // HasRunning base running status.
-func (sf *Base) HasRunning() bool {
+func (sf *Base) HasRunning() (b bool) {
 	sf.mu.Lock()
-	defer sf.mu.Unlock()
-	return sf.running
+	b = sf.running
+	sf.mu.Unlock()
+	return
 }
 
 // Len the number timer of the base.
@@ -52,19 +53,19 @@ func (sf *Base) Len() (length int) {
 	return
 }
 
-// AddJob add a job
+// AddJob add a job and start immediately.
 func (sf *Base) AddJob(job Job, timeout time.Duration) *Timer {
 	tm := NewJob(job, timeout)
 	sf.Add(tm)
 	return tm
 }
 
-// AddJobFunc add a job function
+// AddJobFunc add a job function and start immediately.
 func (sf *Base) AddJobFunc(f JobFunc, timeout time.Duration) *Timer {
 	return sf.AddJob(f, timeout)
 }
 
-// Add add timer to base. and start immediately.
+// Add add timer to base and start immediately.
 func (sf *Base) Add(tm *Timer, newTimeout ...time.Duration) {
 	if tm == nil {
 		return
@@ -74,7 +75,7 @@ func (sf *Base) Add(tm *Timer, newTimeout ...time.Duration) {
 	sf.mu.Unlock()
 }
 
-// Delete Delete timer from base.
+// Delete delete timer from timer base.
 func (sf *Base) Delete(tm *Timer) {
 	if tm == nil {
 		return
@@ -126,8 +127,7 @@ func (sf *Base) start(tm *Timer, newTimeout ...time.Duration) {
 func (sf *Base) run() {
 	notice := make(chan time.Duration)
 	closed := make(chan struct{})
-	// if time
-	tm := time.NewTimer(time.Millisecond)
+	tm := time.NewTimer(time.Hour * 365 * 24)
 	defer tm.Stop()
 
 	go func() {
@@ -150,28 +150,27 @@ func (sf *Base) run() {
 			closed <- struct{}{}
 			return
 		}
-		near := sf.data.peek()
-		if near == nil {
+		item := sf.data.peek()
+		if item == nil {
 			notice <- time.Hour * 365 * 24
 			sf.cond.Wait()
 			sf.mu.Unlock()
 			continue
 		}
-		now := time.Now()
-		if near.next.After(now) {
-			d := near.next.Sub(now)
+		if now := time.Now(); item.next.After(now) {
+			notice <- item.next.Sub(now)
+			sf.cond.Wait()
 			sf.mu.Unlock()
-			notice <- d
 			continue
 		}
 
 		heap.Pop(sf.data)
 		sf.mu.Unlock()
-		if near.job != nil {
-			if near.useGoroutine {
-				go near.job.Run()
+		if item.job != nil {
+			if item.useGoroutine {
+				go item.job.Run()
 			} else {
-				wrapJob(near.job)
+				wrapJob(item.job)
 			}
 		}
 	}

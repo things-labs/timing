@@ -10,13 +10,13 @@ import (
 func main() {
 	base := timing.New().Run()
 
-	tm := timing.NewTimer(time.Second)
+	tm := timing.NewTimer(time.Second * 5)
 	tm.WithJobFunc(func() {
 		log.Println("hello 1")
 		base.Add(tm)
 	})
 
-	tm1 := timing.NewTimer(time.Second * 2)
+	tm1 := timing.NewTimer(time.Second * 5)
 	tm1.WithJobFunc(func() {
 		log.Println("hello 2")
 		base.Add(tm1)
