@@ -169,7 +169,6 @@ func (sf *Base) pop(notice chan<- time.Duration) (item *Timer, err error) {
 	defer sf.mu.Unlock()
 	for {
 		if !sf.running {
-
 			err = errors.New("base is closed")
 			return
 		}
