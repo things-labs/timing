@@ -128,25 +128,28 @@ func (sf *Base) start(tm *Timer, newTimeout ...time.Duration) {
 func (sf *Base) run() {
 	notice := make(chan time.Duration)
 	closed := make(chan struct{})
-	tm := time.NewTimer(time.Hour * 365 * 24)
-	defer tm.Stop()
 
 	go func() {
+		var d = time.Hour * 365 * 24
+
 		for {
+			tm := time.NewTimer(d)
 			select {
 			case <-tm.C:
 				sf.cond.Broadcast()
-			case d := <-notice:
-				tm.Reset(d)
+			case d = <-notice:
+				tm.Stop()
 			case <-closed:
+				tm.Stop()
 				return
 			}
 		}
 	}()
 
 	for {
-		item, err := sf.pop(closed, notice)
+		item, err := sf.pop(notice)
 		if err != nil {
+			closed <- struct{}{}
 			return
 		}
 		if item.job != nil {
@@ -159,14 +162,14 @@ func (sf *Base) run() {
 	}
 }
 
-func (sf *Base) pop(closed chan struct{}, notice chan time.Duration) (item *Timer, err error) {
+func (sf *Base) pop(notice chan<- time.Duration) (item *Timer, err error) {
 	var d time.Duration
 
 	sf.mu.Lock()
 	defer sf.mu.Unlock()
 	for {
 		if !sf.running {
-			closed <- struct{}{}
+
 			err = errors.New("base is closed")
 			return
 		}
