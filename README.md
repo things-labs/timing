@@ -19,7 +19,7 @@ Use go get.
     go get github.com/thinkgos/timing/v4
 ```
 
-Then import the modbus package into your own code.
+Then import the timing package into your own code.
 ```bash
     import "github.com/thinkgos/timing/v4"
 ```
