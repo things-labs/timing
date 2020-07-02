@@ -21,7 +21,7 @@ Use go get.
 
 Then import the modbus package into your own code.
 ```bash
-    import modbus "github.com/thinkgos/timing/v4"
+    import "github.com/thinkgos/timing/v4"
 ```
 
 ### Example
