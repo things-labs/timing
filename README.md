@@ -39,19 +39,19 @@ import (
 func main() {
 	base := timing.New().Run()
 
-	tm := timing.NewTimer(time.Second)
+	tm := timing.NewTimer()
 	tm.WithJobFunc(func() {
 		log.Println("hello 1")
-		base.Add(tm)
+		base.Add(tm, time.Second)
 	})
 
-	tm1 := timing.NewTimer(time.Second * 2)
+	tm1 := timing.NewTimer()
 	tm1.WithJobFunc(func() {
 		log.Println("hello 2")
-		base.Add(tm1)
+		base.Add(tm1, time.Second * 2)
 	})
-	base.Add(tm)
-	base.Add(tm1)
+	base.Add(tm, time.Second * 1)
+	base.Add(tm1, time.Second * 2)
 	time.Sleep(time.Second * 60)
 }
 
