@@ -56,8 +56,8 @@ func (sf *Base) Len() (length int) {
 
 // AddJob add a job and start immediately.
 func (sf *Base) AddJob(job Job, timeout time.Duration) *Timer {
-	tm := NewJob(job, timeout)
-	sf.Add(tm)
+	tm := NewJob(job)
+	sf.Add(tm, timeout)
 	return tm
 }
 
@@ -67,12 +67,12 @@ func (sf *Base) AddJobFunc(f JobFunc, timeout time.Duration) *Timer {
 }
 
 // Add add timer to base and start immediately.
-func (sf *Base) Add(tm *Timer, newTimeout ...time.Duration) {
+func (sf *Base) Add(tm *Timer, timeout time.Duration) {
 	if tm == nil {
 		return
 	}
 	sf.mu.Lock()
-	sf.start(tm, newTimeout...)
+	sf.start(tm, timeout)
 	sf.mu.Unlock()
 }
 
@@ -112,11 +112,8 @@ func (sf *Base) Run() *Base {
 	return sf
 }
 
-func (sf *Base) start(tm *Timer, newTimeout ...time.Duration) {
-	if len(newTimeout) > 0 {
-		tm.timeout = newTimeout[0]
-	}
-	tm.next = time.Now().Add(tm.timeout)
+func (sf *Base) start(tm *Timer, timeout time.Duration) {
+	tm.next = time.Now().Add(timeout)
 	if sf.data.contains(tm) {
 		heap.Fix(sf.data, tm.index)
 	} else {

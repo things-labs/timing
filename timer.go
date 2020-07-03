@@ -6,8 +6,6 @@ import "time"
 type Timer struct {
 	// The index of the object's key in the Heap.queue.
 	index int
-	// timeout time timeout
-	timeout time.Duration
 	// next time the job will run, or the zero time if Base has not been
 	// started or this entry is unsatisfiable
 	next time.Time
@@ -18,18 +16,18 @@ type Timer struct {
 }
 
 // NewTimer new timer
-func NewTimer(timeout time.Duration) *Timer {
-	return &Timer{timeout: timeout, job: emptyJob{}}
+func NewTimer() *Timer {
+	return &Timer{job: emptyJob{}}
 }
 
 // NewJob new timer with job.
-func NewJob(job Job, timeout time.Duration) *Timer {
-	return NewTimer(timeout).WithJob(job)
+func NewJob(job Job) *Timer {
+	return NewTimer().WithJob(job)
 }
 
 // NewJobFunc new timer with job function.
-func NewJobFunc(f func(), timeout time.Duration) *Timer {
-	return NewTimer(timeout).WithJobFunc(f)
+func NewJobFunc(f func()) *Timer {
+	return NewTimer().WithJobFunc(f)
 }
 
 // WithGoroutine with goroutine

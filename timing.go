@@ -24,8 +24,8 @@ func HasRunning() bool {
 
 // AddJob add a job
 func AddJob(job Job, timeout time.Duration) *Timer {
-	tm := NewJob(job, timeout)
-	Add(tm)
+	tm := NewJob(job)
+	Add(tm, timeout)
 	return tm
 }
 
@@ -33,9 +33,9 @@ func AddJob(job Job, timeout time.Duration) *Timer {
 func AddJobFunc(f func(), timeout time.Duration) *Timer { return AddJob(JobFunc(f), timeout) }
 
 // Add add timer to base. and start immediately.
-func Add(tm *Timer, newTimeout ...time.Duration) {
+func Add(tm *Timer, timeout time.Duration) {
 	lazyInit()
-	base.Add(tm, newTimeout...)
+	base.Add(tm, timeout)
 }
 
 // Delete Delete timer from base.
