@@ -32,7 +32,7 @@ func (sf *Base) Close() error {
 	sf.mu.Lock()
 	if sf.running {
 		sf.running = false
-		sf.cond.Broadcast()
+		sf.cond.Signal()
 	}
 	sf.mu.Unlock()
 	return nil
@@ -85,7 +85,7 @@ func (sf *Base) Delete(tm *Timer) {
 	if sf.data.contains(tm) {
 		delete(sf.data.items, tm)
 		heap.Remove(sf.data, tm.index)
-		sf.cond.Broadcast()
+		sf.cond.Signal()
 	}
 	sf.mu.Unlock()
 }
@@ -119,7 +119,7 @@ func (sf *Base) start(tm *Timer, timeout time.Duration) {
 	} else {
 		heap.Push(sf.data, tm)
 	}
-	sf.cond.Broadcast()
+	sf.cond.Signal()
 }
 
 func (sf *Base) run() {
@@ -133,7 +133,7 @@ func (sf *Base) run() {
 			tm := time.NewTimer(d)
 			select {
 			case <-tm.C:
-				sf.cond.Broadcast()
+				sf.cond.Signal()
 			case d = <-notice:
 				tm.Stop()
 			case <-closed:
