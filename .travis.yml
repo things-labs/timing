@@ -1,20 +1,46 @@
 language: go
+language: go
 
-matrix:
-  fast_finish: true
-  include:
-    - go: 1.11.x
-      env: GO111MODULE=on
-    - go: 1.12.x
-      env: GO111MODULE=on
-    - go: 1.13.x
-    - go: 1.14.x
-    - go: master
+os:
+  - osx
+  - windows
+  - linux
+
+go:
+  - 1.14.x
+  - 1.15.x
+
+go_import_path: github.com/thinkgos/timing
 
 before_install:
-  - go get -v ./...
+  - if [[ "${GO111MODULE}" = "on" ]]; then mkdir "${HOME}/go"; export GOPATH="${HOME}/go";
+    export PATH="$GOPATH/bin:$PATH"; fi
+  - mkdir -p ~/bin/ && export PATH="~/bin/:$PATH"
 
 install:
+  - go get -u golang.org/x/lint/golint
+  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.30.0
+  - curl -sfL https://raw.githubusercontent.com/reviewdog/reviewdog/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+
+script:
+  - go get -v ./...
+  - |-
+    case $TRAVIS_OS_NAME in
+      linux|osx)
+        golint ./... | reviewdog -f=golint -reporter=github-check
+        golangci-lint run --out-format=line-number -E goimports -E misspell | reviewdog -f=golangci-lint -reporter=github-check
+        golint ./... | reviewdog -f=golint -reporter=github-pr-review
+        golangci-lint run --out-format=line-number -E goimports -E misspell | reviewdog -f=golangci-lint -reporter=github-pr-review
+        ;;
+    esac
   - go test -v -benchmem -test.bench=".*" -coverprofile=coverage.txt -covermode=atomic  ./...
+
 after_success:
-  - bash <(curl -s https://codecov.io/bash)
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then curl -s https://codecov.io/bash >
+    .codecov && chmod +x .codecov && ./.codecov; else bash <(curl -s https://codecov.io/bash);
+    fi
+
+env:
+  global:
+    - GO111MODULE=on
+    - secure: kSXQb1GKkd8DLKg79a7GuhfSDV1O+Mz2iKFjquz0SyCEdyC3TKdZz3f4ly2e5TnG1JZG9ys5NM/nxVOMniBNpDl4vT+zBARPYxkBohGtaqPL7W5jkQZl7Fpk6dbvi5HPz3waLRpAXltHHXqtqbjojS/Mi/s7GrXy3wHYt9CKCPbmMcyC/QPPZonwI3+eVRgsrnlVwfSK9zfixgMWzVOXc5OFn+3cr/s9vcxAbgheiJuGaf0VFgbAeIMoZTHcjp5lZ6WT5HnCtNQ3fgS7IyuFgabIU20wJtfr8Otx+1J8bLw/NEN1A9x5snWXn9S1JMt0vfa3QM5MyfZhO/NsUjHzoOyWW1Ehw59ZP1uc062RqGbVOwKesMeU+BlA1MahUMdR392wPp18KpP+h+LhMM79pR/KZb+jyzsccRDfn4Y7dUU/PDCEDv4hFtUwjzWC8gtZHXe2h/6jY1Uo3lol/AmlIYyohXOo9YRvofBg77BkeUQDupzzjYXfiBHIosKjSgRczIV1Ww8Jlg7K0Z2wlj+34OY8WOwplmYAc7ldXCh8riKtyftuey+1wGYzdoViL7W45EjzTTnlB3MvMdFug1Z880UI+svMLRQXHB1JkNG98RG9iEzmSnR1exSw1U024OGp8lPjdkxvYRBQTnCqd8Ds/DXCM2nVYfr+guF/RKJHyMY=
