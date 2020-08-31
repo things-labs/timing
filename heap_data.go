@@ -34,7 +34,8 @@ func (h *heapData) Push(x interface{}) {
 func (h *heapData) Pop() interface{} {
 	n := len(h.queue)
 	item := h.queue[n-1]
-	item.index = -1 // for safety
+	item.index = -1    // for safety
+	h.queue[n-1] = nil // should set nil for gc
 	h.queue = h.queue[:n-1]
 	delete(h.items, item)
 	return item
