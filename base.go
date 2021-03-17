@@ -9,22 +9,24 @@ import (
 
 // Base keeps track of any number of entries.
 type Base struct {
+	mu   sync.Mutex
+	cond sync.Cond
+
+	// follow should hold with mutex
 	data    *heapData
-	mu      sync.Mutex
-	cond    sync.Cond
 	running bool
 }
 
 // New new a base with option
 func New() *Base {
-	tim := &Base{
+	b := &Base{
 		data: &heapData{
 			queue: make([]*Timer, 0),
 			items: make(map[*Timer]struct{}),
 		},
 	}
-	tim.cond.L = &tim.mu
-	return tim
+	b.cond.L = &b.mu
+	return b
 }
 
 // Close the base
@@ -54,25 +56,25 @@ func (sf *Base) Len() (length int) {
 	return
 }
 
-// AddJob add a job and start immediately.
+// AddJob add a job and startLocked immediately.
 func (sf *Base) AddJob(job Job, timeout time.Duration) *Timer {
 	tm := NewJob(job)
 	sf.Add(tm, timeout)
 	return tm
 }
 
-// AddJobFunc add a job function and start immediately.
+// AddJobFunc add a job function and startLocked immediately.
 func (sf *Base) AddJobFunc(f JobFunc, timeout time.Duration) *Timer {
 	return sf.AddJob(f, timeout)
 }
 
-// Add add timer to base and start immediately.
+// Add add timer to base and startLocked immediately.
 func (sf *Base) Add(tm *Timer, timeout time.Duration) {
 	if tm == nil {
 		return
 	}
 	sf.mu.Lock()
-	sf.start(tm, timeout)
+	sf.startLocked(tm, timeout)
 	sf.mu.Unlock()
 }
 
@@ -96,7 +98,7 @@ func (sf *Base) Modify(tm *Timer, timeout time.Duration) {
 		return
 	}
 	sf.mu.Lock()
-	sf.start(tm, timeout)
+	sf.startLocked(tm, timeout)
 	sf.mu.Unlock()
 }
 
@@ -112,7 +114,8 @@ func (sf *Base) Run() *Base {
 	return sf
 }
 
-func (sf *Base) start(tm *Timer, timeout time.Duration) {
+// start must be hold mutex locked
+func (sf *Base) startLocked(tm *Timer, timeout time.Duration) {
 	tm.next = time.Now().Add(timeout)
 	if sf.data.contains(tm) {
 		heap.Fix(sf.data, tm.index)

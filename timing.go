@@ -32,7 +32,7 @@ func AddJob(job Job, timeout time.Duration) *Timer {
 // AddJobFunc add a job function
 func AddJobFunc(f func(), timeout time.Duration) *Timer { return AddJob(JobFunc(f), timeout) }
 
-// Add add timer to base. and start immediately.
+// Add add timer to base. and startLocked immediately.
 func Add(tm *Timer, timeout time.Duration) {
 	lazyInit()
 	base.Add(tm, timeout)
