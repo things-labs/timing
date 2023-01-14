@@ -1,3 +1,3 @@
-module github.com/thinkgos/timing/v4
+module github.com/things-labs/timing
 
-go 1.14
+go 1.18

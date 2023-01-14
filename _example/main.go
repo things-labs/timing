@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/thinkgos/timing/v4"
+	"github.com/things-labs/timing"
 )
 
 func main() {
